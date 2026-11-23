@@ -1,0 +1,5 @@
+- insert:
+    - id: svn-review
+      name: '@local/dsh-plugin-svn-review'
+      config:
+        svnPath: svn

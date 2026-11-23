@@ -1,0 +1,963 @@
+window.__ModuleLoader__.load({
+  id: '@local/dsh-plugin-svn-review',
+  factory(require) {
+    const React = require('react')
+    const h = React.createElement
+    const { useState, useEffect, useCallback, useRef } = React
+
+    /** Copy namespace and this tab type's identity. */
+    const NS = 'svnReview'
+    const ID = '@local/dsh-plugin-svn-review'
+
+    const zh = {
+      title: 'SVN 改动',
+      description: '按工作区查看 SVN 提交记录、本地改动与逐行提交人',
+      tab: 'SVN',
+      alreadyOpen: 'SVN 面板已打开',
+      projects: '项目',
+      changes: '改动文件',
+      history: '提交记录',
+      refresh: '刷新',
+      filter: '筛选路径',
+      noMatch: '没有匹配的路径。',
+      noProjects: '当前工作区下没有发现 SVN 工作副本。',
+      noWorkspace: '这个会话的目录不在任何已注册的工作区内，因此没有可查看的 SVN 项目。',
+      noSession: '面板没有拿到会话标识，无法确定属于哪个工作区。请关掉这个标签页，再从会话标题栏的 SVN 按钮重新打开。',
+      workspace: '工作区',
+      noChanges: '这个项目没有本地改动。',
+      noHistory: '没有取到提交记录。',
+      loading: '正在读取…',
+      failed: '读取失败',
+      back: '返回列表',
+      diff: '改动内容',
+      noDiff: '这个文件没有可显示的文本差异（可能是二进制文件或仅属性变更）。',
+      fileCount: '{count} 个文件',
+      revisionCount: '最近 {count} 个版本',
+      truncation: '输出过大，已截断。',
+      unversioned: '未纳入版本控制',
+      unversionedHint: '该文件尚未 svn add，没有版本库差异。',
+      missing: '已丢失',
+      ignored: '已忽略',
+      conflicted: '冲突',
+      obstructed: '被占用',
+      external: '外部',
+      retry: '重试',
+      conflict: '存在冲突',
+      emptyMessage: '无提交说明',
+      actionM: '修改',
+      actionA: '新增',
+      actionD: '删除',
+      actionR: '替换',
+      // Whole-file viewer.
+      fileTab: '文件内容',
+      diffTab: '改动内容',
+      readingFile: '正在读取文件…',
+      binaryFile: '这是二进制文件，无法按行显示。',
+      emptyFile: '文件为空。',
+      shownLines: '{count} 行',
+      atRevision: 'r{rev} 的版本',
+      localVersion: '工作副本当前版本',
+      lineAuthor: '第 {line} 行提交人',
+      lineAuthorHint: '右键行号可查看该行提交人',
+      blameLoading: '正在查询逐行归属…',
+      blameFailed: '逐行归属查询失败',
+      blameRepository: '该文件名含非 ASCII 字符，逐行归属取自版本库 r{rev}，不含本地未提交的改动。',
+      blameMismatch: '文件有本地改动，行归属按 r{rev} 计算，可能与当前内容的行号不完全对应。',
+      close: '关闭',
+      menuBlame: '查看这行提交人',
+      author: '提交人',
+      revision: '版本',
+      date: '时间',
+      unknownAuthor: '未知',
+      encodedAs: '编码 {encoding}',
+      notInRevision: '这个文件在 r{rev} 时还不存在（或已被删除），因此没有该版本的内容。',
+    }
+
+    const en = {
+      title: 'SVN changes',
+      description: 'Review SVN revisions, local changes, and per-line authors per workspace',
+      tab: 'SVN',
+      alreadyOpen: 'The SVN panel is already open',
+      projects: 'Project',
+      changes: 'Changed files',
+      history: 'Revisions',
+      refresh: 'Refresh',
+      filter: 'Filter paths',
+      noMatch: 'No path matches the filter.',
+      noProjects: 'No SVN working copy was found under this workspace.',
+      noWorkspace: 'This session is not inside a registered workspace, so there is no SVN project to show.',
+      noSession: 'The panel was given no session id, so it cannot tell which workspace it belongs to. Close this tab and reopen it from the SVN button in the session header.',
+      workspace: 'Workspace',
+      noChanges: 'This project has no local modifications.',
+      noHistory: 'No revisions were returned.',
+      loading: 'Loading…',
+      failed: 'Request failed',
+      back: 'Back to list',
+      diff: 'Diff',
+      noDiff: 'No text difference for this file (binary, or property-only change).',
+      fileCount: '{count} files',
+      revisionCount: 'last {count} revisions',
+      truncation: 'Output was truncated.',
+      unversioned: 'Unversioned',
+      unversionedHint: 'This file is not under version control yet, so it has no repository diff.',
+      missing: 'Missing',
+      ignored: 'Ignored',
+      conflicted: 'Conflicted',
+      obstructed: 'Obstructed',
+      external: 'External',
+      retry: 'Retry',
+      conflict: 'Conflict',
+      emptyMessage: 'No commit message',
+      actionM: 'modified',
+      actionA: 'added',
+      actionD: 'deleted',
+      actionR: 'replaced',
+      // Whole-file viewer.
+      fileTab: 'File',
+      diffTab: 'Diff',
+      readingFile: 'Reading the file…',
+      binaryFile: 'This is a binary file and cannot be shown line by line.',
+      emptyFile: 'The file is empty.',
+      shownLines: '{count} lines',
+      atRevision: 'as of r{rev}',
+      localVersion: 'as it is on disk',
+      lineAuthor: 'Author of line {line}',
+      lineAuthorHint: 'Right-click a line number to see who last changed that line',
+      blameLoading: 'Looking up line authors…',
+      blameFailed: 'Line-author lookup failed',
+      blameRepository: 'This name is not ASCII, so line authors come from repository r{rev} and exclude uncommitted local edits.',
+      blameMismatch: 'The file has local edits, so line authors are computed at r{rev} and may not line up with what is on screen.',
+      close: 'Close',
+      menuBlame: 'See who changed this line',
+      author: 'Author',
+      revision: 'Revision',
+      date: 'Date',
+      unknownAuthor: 'unknown',
+      encodedAs: 'encoding {encoding}',
+      notInRevision: 'This file does not exist at r{rev} (not born yet, or already deleted), so there is no content for that revision.',
+    }
+
+    /** Document-relative route base: the page owns the mount point. */
+    const route = (name, params) => {
+      const search = new URLSearchParams()
+      for (const [key, value] of Object.entries(params ?? {})) {
+        if (value === undefined || value === null || value === '') continue
+        search.set(key, String(value))
+      }
+      const query = search.toString()
+      return `svn-review/${name}${query === '' ? '' : `?${query}`}`
+    }
+
+    /** Fetch one route as JSON; non-OK responses become a thrown error. */
+    const get = async (name, params, signal) => {
+      const response = await fetch(route(name, params), { signal, headers: { accept: 'application/json' } })
+      if (!response.ok) throw new Error(`HTTP ${String(response.status)}`)
+      return await response.json()
+    }
+
+    const css = `
+.dsh-svnrev-root { display: flex; flex-direction: column; gap: 10px; padding: 12px; font-size: var(--dsw-font-xs-12, 12px); color: var(--dsw-alias-label-primary); height: 100%; box-sizing: border-box; overflow: auto; }
+.dsh-svnrev-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.dsh-svnrev-btn { font: inherit; cursor: pointer; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--dsw-alias-border-l1); background: transparent; color: var(--dsw-alias-label-primary); }
+.dsh-svnrev-btn:hover { background: var(--dsw-alias-bg-layer-2); }
+.dsh-svnrev-btn[aria-pressed="true"] { border-color: var(--dsw-alias-brand-primary); color: var(--dsw-alias-brand-primary); }
+.dsh-svnrev-btn:disabled { opacity: .5; cursor: default; }
+.dsh-svnrev-btn:focus-visible, .dsh-svnrev-select:focus-visible, .dsh-svnrev-row:focus-visible, .dsh-svnrev-diff:focus-visible, .dsh-svnrev-code:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 1px; }
+.dsh-svnrev-select { font: inherit; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); max-width: 100%; }
+.dsh-svnrev-filter { font: inherit; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); flex: 1 1 120px; min-width: 0; }
+.dsh-svnrev-muted { color: var(--dsw-alias-label-secondary); }
+.dsh-svnrev-err { color: var(--dsw-alias-state-error-primary); }
+.dsh-svnrev-list { display: flex; flex-direction: column; gap: 2px; }
+.dsh-svnrev-row { display: flex; align-items: baseline; gap: 6px; padding: 4px 6px; border-radius: 6px; cursor: pointer; text-align: left; border: 1px solid transparent; background: transparent; color: inherit; font: inherit; width: 100%; }
+.dsh-svnrev-row:hover { background: var(--dsw-alias-bg-layer-2); }
+.dsh-svnrev-row[aria-current="true"] { background: var(--dsw-alias-bg-layer-2); border-color: var(--dsw-alias-border-l2); }
+.dsh-svnrev-path { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.dsh-svnrev-tag { flex: 0 0 auto; font-size: var(--dsw-font-xxs-11, 11px); padding: 1px 5px; border-radius: 999px; border: 1px solid var(--dsw-alias-border-l1); color: var(--dsw-alias-label-secondary); }
+.dsh-svnrev-tag-m { color: var(--dsw-alias-state-warn-primary); }
+.dsh-svnrev-tag-a { color: var(--dsw-alias-state-success-primary); }
+.dsh-svnrev-tag-d { color: var(--dsw-alias-state-error-primary); }
+.dsh-svnrev-tag-u { color: var(--dsw-alias-state-idle-primary); }
+.dsh-svnrev-rev { display: flex; flex-direction: column; gap: 2px; padding: 6px; border-radius: 6px; border: 1px solid var(--dsw-alias-border-l1); }
+.dsh-svnrev-rev-head { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+.dsh-svnrev-rev-num { font-weight: 600; color: var(--dsw-alias-brand-primary); }
+.dsh-svnrev-msg { white-space: pre-wrap; overflow-wrap: anywhere; }
+.dsh-svnrev-diff { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: var(--dsw-font-xxs-11, 11px); line-height: 1.5; border: 1px solid var(--dsw-alias-border-l1); border-radius: 6px; background: var(--dsw-alias-bg-layer-1); overflow: auto; margin: 0; padding: 6px 0; max-height: 60vh; }
+.dsh-svnrev-diff-body { display: block; }
+.dsh-svnrev-line { display: block; padding: 0 8px; white-space: pre; }
+.dsh-svnrev-add { color: var(--dsw-alias-state-success-primary); }
+.dsh-svnrev-del { color: var(--dsw-alias-state-error-primary); }
+.dsh-svnrev-hunk { color: var(--dsw-alias-label-secondary); }
+.dsh-svnrev-meta { color: var(--dsw-alias-label-secondary); }
+.dsh-svnrev-title { display: inline-flex; align-items: center; gap: 4px; }
+.dsh-svnrev-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--dsw-alias-brand-primary); display: inline-block; }
+.dsh-svnrev-open { display: inline-flex; align-items: center; gap: 5px; }
+.dsh-svnrev-open[aria-pressed="true"] { border-color: var(--dsw-alias-brand-primary); color: var(--dsw-alias-brand-primary); }
+
+/* Whole-file viewer with a sticky line-number gutter. */
+.dsh-svnrev-code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: var(--dsw-font-xxs-11, 11px); line-height: 1.55; border: 1px solid var(--dsw-alias-border-l1); border-radius: 6px; background: var(--dsw-alias-bg-layer-1); overflow: auto; max-height: 62vh; }
+.dsh-svnrev-codeline { display: flex; align-items: flex-start; min-width: max-content; }
+.dsh-svnrev-codeline:hover { background: var(--dsw-alias-bg-layer-2); }
+.dsh-svnrev-lineno { flex: 0 0 auto; position: sticky; left: 0; z-index: 1; min-width: 5ch; padding: 0 8px 0 6px; text-align: right; color: var(--dsw-alias-label-secondary); background: var(--dsw-alias-bg-layer-2); border-right: 1px solid var(--dsw-alias-border-l1); cursor: context-menu; user-select: none; font: inherit; }
+.dsh-svnrev-lineno:hover { color: var(--dsw-alias-brand-primary); }
+.dsh-svnrev-lineno-active { color: var(--dsw-alias-brand-primary); font-weight: 600; }
+.dsh-svnrev-gutter-blame { flex: 0 0 auto; padding: 0 6px; color: var(--dsw-alias-label-secondary); border-right: 1px solid var(--dsw-alias-border-l1); white-space: pre; }
+.dsh-svnrev-codetext { display: block; padding: 0 10px; white-space: pre; }
+.dsh-svnrev-codehead { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+
+/* Right-click menu, positioned at the pointer. */
+.dsh-svnrev-menu { position: fixed; z-index: 60; min-width: 170px; padding: 4px; border-radius: 8px; border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-1); box-shadow: 0 8px 24px rgba(0,0,0,.28); }
+.dsh-svnrev-menu-item { display: block; width: 100%; text-align: left; font: inherit; cursor: pointer; padding: 5px 8px; border-radius: 6px; border: 0; background: transparent; color: var(--dsw-alias-label-primary); }
+.dsh-svnrev-menu-item:hover, .dsh-svnrev-menu-item:focus-visible { background: var(--dsw-alias-bg-layer-2); outline: none; }
+.dsh-svnrev-blamebar { display: flex; gap: 10px; flex-wrap: wrap; align-items: baseline; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-layer-2); }
+.dsh-svnrev-kv { display: inline-flex; gap: 4px; align-items: baseline; }
+@media (max-width: 720px) { .dsh-svnrev-open-label { display: none; } }
+`
+
+    /** Classify one unified-diff line for colouring. */
+    const lineClass = (line) => {
+      if (line.startsWith('+++') || line.startsWith('---') || line.startsWith('Index: ')) return 'dsh-svnrev-meta'
+      if (line.startsWith('@@')) return 'dsh-svnrev-hunk'
+      if (line.startsWith('+')) return 'dsh-svnrev-add'
+      if (line.startsWith('-')) return 'dsh-svnrev-del'
+      return undefined
+    }
+
+    /** Render a unified diff with per-line colouring. */
+    function DiffView({ text, t }) {
+      if (text === null || text === undefined || text.trim() === '') {
+        return h('div', { className: 'dsh-svnrev-muted' }, t('noDiff'))
+      }
+      const lines = text.split('\n')
+      // A scroll container must be reachable from the keyboard, or a long diff
+      // cannot be read without a mouse.
+      return h('pre', { className: 'dsh-svnrev-diff', tabIndex: 0, role: 'region', 'aria-label': t('diff') },
+        h('code', { className: 'dsh-svnrev-diff-body' },
+          lines.map((line, index) => h('span', {
+            key: index,
+            className: ['dsh-svnrev-line', lineClass(line)].filter(Boolean).join(' '),
+          }, line === '' ? ' ' : line))))
+    }
+
+    /** Short local time for an SVN ISO timestamp. */
+    const when = (iso) => {
+      if (!iso) return ''
+      const at = new Date(iso)
+      return Number.isNaN(at.getTime()) ? iso : at.toLocaleString()
+    }
+
+    /**
+     * SVN status to a label. `svn status --xml` spells its `item` attribute in
+     * words (`modified`, `unversioned`, `missing`, `conflicted`, …) while
+     * `svn log -v` spells a change action as one letter (`M`, `A`, `D`, `R`), so
+     * both spellings map here. Every code names its own meaning rather than
+     * deriving one from the first character.
+     */
+    const STATUS_LABELS = {
+      // svn status --xml `item` values.
+      normal: { key: 'actionM', tone: 'm' },
+      modified: { key: 'actionM', tone: 'm' },
+      added: { key: 'actionA', tone: 'a' },
+      deleted: { key: 'actionD', tone: 'd' },
+      replaced: { key: 'actionR', tone: 'm' },
+      conflicted: { key: 'conflicted', tone: 'd' },
+      unversioned: { key: 'unversioned', tone: 'u' },
+      missing: { key: 'missing', tone: 'd' },
+      ignored: { key: 'ignored', tone: 'u' },
+      obstructed: { key: 'obstructed', tone: 'd' },
+      external: { key: 'external', tone: 'u' },
+      incomplete: { key: 'obstructed', tone: 'd' },
+      // svn log -v `action` letters.
+      M: { key: 'actionM', tone: 'm' },
+      A: { key: 'actionA', tone: 'a' },
+      D: { key: 'actionD', tone: 'd' },
+      R: { key: 'actionR', tone: 'm' },
+      C: { key: 'conflicted', tone: 'd' },
+      '?': { key: 'unversioned', tone: 'u' },
+      '!': { key: 'missing', tone: 'd' },
+      I: { key: 'ignored', tone: 'u' },
+      '~': { key: 'obstructed', tone: 'd' },
+      X: { key: 'external', tone: 'u' },
+    }
+
+    /** The status tag for one changed path or revision entry. */
+    function statusTag(h, t, code) {
+      const raw = String(code ?? 'M')
+      const meta = STATUS_LABELS[raw] ?? STATUS_LABELS[raw.toUpperCase()] ?? STATUS_LABELS.M
+      return h('span', { className: `dsh-svnrev-tag dsh-svnrev-tag-${meta.tone}` }, t(meta.key))
+    }
+
+    /** Tab chip: a dot plus the localized name captured at open time. */
+    function SvnTitle({ t }) {
+      return h('span', { className: 'dsh-svnrev-title' },
+        h('span', { className: 'dsh-svnrev-dot', 'aria-hidden': 'true' }),
+        t('tab'))
+    }
+
+    /** The guide card's glyph, drawn in the surrounding text colour. */
+    function SvnMark({ size }) {
+      const px = typeof size === 'number' ? size : 22
+      return h('svg', { width: px, height: px, viewBox: '0 0 36 36', 'aria-hidden': 'true', focusable: 'false' },
+        h('rect', { x: 5, y: 5, width: 26, height: 26, rx: 7, fill: 'none', stroke: 'currentColor', strokeWidth: 2.6 }),
+        h('path', { d: 'M11 15h9m-9 6h6', fill: 'none', stroke: 'currentColor', strokeWidth: 2.6, strokeLinecap: 'round' }),
+        h('circle', { cx: 25, cy: 25, r: 6, fill: 'currentColor' }))
+    }
+
+    /**
+     * The header control that opens this tab. It reports whether this session's
+     * panel is already showing, so a second click is visibly a no-op rather
+     * than a button that appears broken.
+     */
+    function SvnOpenButton({ t, open, sessionId, useSvnOpenTabs }) {
+      // The framework binds each entry of the inject `hooks` face as a
+      // subscribing hook (`svnOpenTabs` → `useSvnOpenTabs`), so this stays
+      // correct as tabs open and close.
+      const openTabs = typeof useSvnOpenTabs === 'function' ? useSvnOpenTabs() : undefined
+      const shown = Array.isArray(openTabs)
+        && openTabs.some(tab => tab.sessionId === sessionId && tab.kind === 'svn-review')
+      return h('button', {
+        type: 'button',
+        className: 'dsh-svnrev-btn dsh-svnrev-open',
+        title: shown ? t('alreadyOpen') : t('title'),
+        'aria-label': t('title'),
+        'aria-pressed': shown,
+        onClick: open,
+      },
+      h('svg', { width: 14, height: 14, viewBox: '0 0 36 36', 'aria-hidden': 'true', focusable: 'false' },
+        h('rect', { x: 5, y: 5, width: 26, height: 26, rx: 7, fill: 'none', stroke: 'currentColor', strokeWidth: 2.6 }),
+        h('path', { d: 'M11 15h9m-9 6h6', fill: 'none', stroke: 'currentColor', strokeWidth: 2.6, strokeLinecap: 'round' }),
+        h('circle', { cx: 25, cy: 25, r: 6, fill: 'currentColor' })),
+      h('span', { className: 'dsh-svnrev-open-label' }, t('tab')))
+    }
+
+    /**
+     * The whole file, one row per line, with a line-number gutter whose numbers
+     * open a per-line author lookup on right click.
+     *
+     * `blame` maps a line number to its attribution. It is rendered only when
+     * its `source` matches the content on screen: a repository blame over a
+     * locally edited file describes a different text, and printing it beside
+     * the wrong lines would be worse than printing nothing.
+     */
+    function FileView({ file, blame, activeLine, onPickLine, t }) {
+      if (file.binary === true) {
+        return h('div', { className: 'dsh-svnrev-muted' }, t('binaryFile'))
+      }
+      const text = String(file.content ?? '')
+      if (text === '') {
+        return h('div', { className: 'dsh-svnrev-muted' }, t('emptyFile'))
+      }
+      // A trailing newline is not an extra line of code.
+      const lines = text.replace(/\n$/, '').split('\n')
+      const aligned = blame !== null && blame !== undefined && blame.source === file.source
+      const byLine = new Map()
+      if (aligned) {
+        for (const entry of blame.entries ?? []) byLine.set(entry.line, entry)
+      }
+      return h('div', { className: 'dsh-svnrev-code', tabIndex: 0, role: 'region', 'aria-label': t('fileTab') },
+        lines.map((line, index) => {
+          const number = index + 1
+          const entry = byLine.get(number)
+          return h('div', { className: 'dsh-svnrev-codeline', key: number },
+            aligned && h('span', { className: 'dsh-svnrev-gutter-blame' },
+              `${entry === undefined ? '' : `r${String(entry.revision)}`} ${entry === undefined ? '' : entry.author}`.trim() || ' '),
+            h('span', {
+              className: ['dsh-svnrev-lineno', activeLine === number ? 'dsh-svnrev-lineno-active' : undefined].filter(Boolean).join(' '),
+              role: 'button',
+              tabIndex: 0,
+              title: t('lineAuthorHint'),
+              'aria-label': t('lineAuthor', { line: number }),
+              onContextMenu: (event) => {
+                event.preventDefault()
+                onPickLine(number, event.clientX, event.clientY)
+              },
+              // Keyboard parity: the same lookup without a pointer.
+              onKeyDown: (event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return
+                event.preventDefault()
+                const box = event.currentTarget.getBoundingClientRect()
+                onPickLine(number, box.left, box.bottom)
+              },
+              onClick: (event) => {
+                const box = event.currentTarget.getBoundingClientRect()
+                onPickLine(number, box.left, box.bottom)
+              },
+            }, String(number)),
+            h('span', { className: 'dsh-svnrev-codetext' }, line === '' ? ' ' : line))
+        }))
+    }
+
+    /**
+     * The panel: one workspace's projects, then that project's local changes or
+     * its revisions, then the picked file as a whole (with line numbers and
+     * per-line authors) or its diff.
+     */
+    function SvnPanel({ t, sessionId }) {
+      const [projects, setProjects] = useState({ phase: 'loading' })
+      const [current, setCurrent] = useState(null)
+      const [mode, setMode] = useState('changes')
+      const [status, setStatus] = useState({ phase: 'idle' })
+      const [log, setLog] = useState({ phase: 'idle' })
+      const [picked, setPicked] = useState(null)
+      const [tab, setTab] = useState('file')
+      const [filter, setFilter] = useState('')
+      const [generation, setGeneration] = useState(0)
+      const [menu, setMenu] = useState(null)
+      /** Token of the newest pick; an older response must not overwrite it. */
+      const pickToken = useRef(0)
+      /** Blame results keyed by `path@rev`, so the same line costs one request. */
+      const blameCache = useRef(new Map())
+
+      // Projects: one scan per panel life, and again after an explicit rescan.
+      // The scan is scoped to the workspace THIS session lives in.
+      useEffect(() => {
+        const controller = new AbortController()
+        setProjects({ phase: 'loading' })
+        get('projects', { session: sessionId }, controller.signal).then((payload) => {
+          if (controller.signal.aborted) return
+          if (payload.ok === false) {
+            setProjects({ phase: 'failed', message: payload.message ?? '' })
+            return
+          }
+          const list = payload.projects ?? []
+          setProjects({ phase: 'ready', list, workspace: payload.workspace ?? null, reason: payload.reason })
+          setCurrent((previous) => previous !== null && list.some(item => item.path === previous.path)
+            ? previous
+            : list[0] ?? null)
+        }, (error) => {
+          if (!controller.signal.aborted) setProjects({ phase: 'failed', message: String(error) })
+        })
+        return () => { controller.abort() }
+      }, [generation, sessionId])
+
+      // The selected project's local changes.
+      useEffect(() => {
+        if (current === null || mode !== 'changes') return
+        const controller = new AbortController()
+        setStatus({ phase: 'loading' })
+        get('status', { wc: current.path }, controller.signal).then((payload) => {
+          if (controller.signal.aborted) return
+          if (payload.ok === false) {
+            setStatus({ phase: 'failed', message: payload.message ?? '' })
+            return
+          }
+          setStatus({ phase: 'ready', payload })
+        }, (error) => {
+          if (!controller.signal.aborted) setStatus({ phase: 'failed', message: String(error) })
+        })
+        return () => { controller.abort() }
+      }, [current, mode, generation])
+
+      // The selected project's recent revisions.
+      useEffect(() => {
+        if (current === null || mode !== 'history') return
+        const controller = new AbortController()
+        setLog({ phase: 'loading' })
+        get('log', { wc: current.path }, controller.signal).then((payload) => {
+          if (controller.signal.aborted) return
+          if (payload.ok === false) {
+            setLog({ phase: 'failed', message: payload.message ?? '' })
+            return
+          }
+          setLog({ phase: 'ready', payload })
+        }, (error) => {
+          if (!controller.signal.aborted) setLog({ phase: 'failed', message: String(error) })
+        })
+        return () => { controller.abort() }
+      }, [current, mode, generation])
+
+      /** Escape closes the line menu. */
+      useEffect(() => {
+        if (menu === null) return undefined
+        const away = () => { setMenu(null) }
+        const escape = (event) => { if (event.key === 'Escape') setMenu(null) }
+        window.addEventListener('click', away)
+        window.addEventListener('keydown', escape)
+        return () => {
+          window.removeEventListener('click', away)
+          window.removeEventListener('keydown', escape)
+        }
+      }, [menu])
+
+      /**
+       * Open one file: its whole content at a revision (or as it is on disk),
+       * plus the diff that brought it here.
+       *
+       * The request is stamped so a response that arrives after the user
+       * switched project, mode, or file is discarded instead of replacing what
+       * is on screen.
+       */
+      const openFile = useCallback(async (request) => {
+        const token = pickToken.current + 1
+        pickToken.current = token
+        setTab('file')
+        setPicked({
+          phase: 'loading',
+          title: request.title,
+          wc: request.wc,
+          path: request.path,
+          rev: request.rev,
+          diff: request.diff,
+          diffTruncated: request.diffTruncated === true,
+          hint: request.hint,
+          file: null,
+          fileError: null,
+          fileMissing: false,
+          blame: null,
+          activeLine: null,
+        })
+        try {
+          const payload = await get('file', { wc: request.wc, path: request.path, rev: request.rev })
+          if (pickToken.current !== token) return
+          if (payload.ok === false) {
+            // "Not born yet at that revision" is an ordinary answer about
+            // history, not a failure to report as an error.
+            const message = payload.code === 'not-in-revision'
+              ? t('notInRevision', { rev: payload.revision ?? request.rev ?? '?' })
+              : (payload.message ?? '')
+            setPicked(previous => (previous === null ? previous : {
+              ...previous,
+              phase: 'ready',
+              file: null,
+              fileError: message,
+              fileMissing: payload.code === 'not-in-revision',
+            }))
+            return
+          }
+          setPicked(previous => (previous === null ? previous : {
+            ...previous,
+            phase: 'ready',
+            file: payload,
+            fileError: null,
+            fileMissing: false,
+          }))
+        } catch (error) {
+          if (pickToken.current !== token) return
+          setPicked(previous => (previous === null ? previous : {
+            ...previous,
+            phase: 'ready',
+            file: null,
+            fileError: String(error),
+            fileMissing: false,
+          }))
+        }
+      }, [])
+
+      /**
+       * Load the per-line attribution of the open file. One request per
+       * `path@rev` is kept, so right-clicking several lines is free.
+       */
+      const loadBlame = useCallback(async () => {
+        if (picked === null || picked.phase !== 'ready') return
+        const key = `${picked.path}@${picked.rev ?? ''}`
+        const cached = blameCache.current.get(key)
+        if (cached !== undefined) {
+          setPicked(previous => (previous === null ? previous : { ...previous, blame: cached }))
+          return
+        }
+        setPicked(previous => (previous === null ? previous : { ...previous, blame: { phase: 'loading' } }))
+        try {
+          const payload = await get('blame', { wc: picked.wc, path: picked.path, rev: picked.rev })
+          const outcome = payload.ok === false
+            ? { phase: 'failed', message: payload.message ?? '' }
+            : { phase: 'ready', ...payload }
+          blameCache.current.set(key, outcome)
+          setPicked(previous => (previous === null || previous.path !== picked.path ? previous : { ...previous, blame: outcome }))
+        } catch (error) {
+          setPicked(previous => (previous === null || previous.path !== picked.path
+            ? previous
+            : { ...previous, blame: { phase: 'failed', message: String(error) } }))
+        }
+      }, [picked])
+
+      /** Any move that changes what the list means also closes the open file. */
+      const resetView = () => {
+        pickToken.current += 1
+        setPicked(null)
+        setFilter('')
+        setMenu(null)
+      }
+
+      const body = []
+
+      // Header: project picker, the two views, one reload control.
+      body.push(h('div', { className: 'dsh-svnrev-bar', key: 'bar' },
+        h('select', {
+          className: 'dsh-svnrev-select',
+          'aria-label': t('projects'),
+          value: current === null ? '' : current.path,
+          disabled: projects.phase !== 'ready' || projects.list.length === 0,
+          onChange: (event) => {
+            const next = (projects.list ?? []).find(item => item.path === event.target.value) ?? null
+            resetView()
+            setCurrent(next)
+          },
+        }, projects.phase === 'ready' && projects.list.length > 0
+          // `label` already spells the chain out (workspace, then the path down
+          // to the working copy), so two same-named checkouts stay distinct.
+          ? projects.list.map(item => h('option', { key: item.path, value: item.path },
+            item.label ?? item.name))
+          : h('option', { value: '' }, projects.phase === 'ready' ? t('noProjects') : t('loading'))),
+        h('button', {
+          type: 'button', className: 'dsh-svnrev-btn',
+          'aria-pressed': mode === 'changes',
+          disabled: current === null,
+          onClick: () => { resetView(); setMode('changes') },
+        }, t('changes')),
+        h('button', {
+          type: 'button', className: 'dsh-svnrev-btn',
+          'aria-pressed': mode === 'history',
+          disabled: current === null,
+          onClick: () => { resetView(); setMode('history') },
+        }, t('history')),
+        h('button', {
+          type: 'button', className: 'dsh-svnrev-btn',
+          disabled: current === null,
+          onClick: () => { resetView(); setGeneration(value => value + 1) },
+        }, t('refresh'))))
+
+      // The workspace this panel is confined to, so the scope is never implied.
+      if (projects.phase === 'ready' && projects.workspace !== null && projects.workspace !== undefined) {
+        body.push(h('div', { className: 'dsh-svnrev-muted', key: 'ws' },
+          `${t('workspace')}: ${projects.workspace.title === '' ? projects.workspace.path : projects.workspace.title}`))
+      }
+
+      // A failed project scan is its own dead end; retry re-runs it.
+      if (projects.phase === 'failed') {
+        body.push(h('div', { className: 'dsh-svnrev-err', key: 'pf' },
+          `${t('failed')}: ${projects.message}`,
+          ' ',
+          h('button', {
+            type: 'button', className: 'dsh-svnrev-btn',
+            onClick: () => { setGeneration(value => value + 1) },
+          }, t('retry'))))
+      }
+      if (projects.phase === 'ready' && projects.list.length === 0) {
+        // Three different causes, three different fixes: a panel with no session
+        // id, a session outside every workspace, or a workspace with no checkout.
+        const explanation = projects.reason === 'no-session'
+          ? t('noSession')
+          : projects.workspace === null || projects.workspace === undefined ? t('noWorkspace') : t('noProjects')
+        body.push(h('div', { className: 'dsh-svnrev-muted', key: 'np' }, explanation))
+      }
+      // A working copy whose own `svn info` failed still lists, with its reason.
+      if (current !== null && current.error !== null && current.error !== undefined) {
+        body.push(h('div', { className: 'dsh-svnrev-err', key: 'cerr' },
+          `${t('failed')}: ${current.error}`))
+      }
+
+      // Revision numbers from the log make the project line concrete.
+      if (current !== null) {
+        body.push(h('div', { className: 'dsh-svnrev-muted', key: 'cur' },
+          `${current.label ?? current.name} · r${String(current.revision ?? '?')}`))
+      }
+
+      // A picked file replaces the list.
+      if (picked !== null) {
+        body.push(h('div', { className: 'dsh-svnrev-bar', key: 'pickbar' },
+          h('button', {
+            type: 'button', className: 'dsh-svnrev-btn',
+            onClick: () => { resetView() },
+          }, t('back')),
+          h('button', {
+            type: 'button', className: 'dsh-svnrev-btn',
+            'aria-pressed': tab === 'file',
+            onClick: () => { setTab('file') },
+          }, t('fileTab')),
+          h('button', {
+            type: 'button', className: 'dsh-svnrev-btn',
+            'aria-pressed': tab === 'diff',
+            onClick: () => { setTab('diff') },
+          }, t('diffTab'))))
+        body.push(h('div', { className: 'dsh-svnrev-path', key: 'picktitle' }, picked.title))
+        if (picked.phase === 'loading') {
+          body.push(h('div', { className: 'dsh-svnrev-muted', key: 'pickload' }, t('readingFile')))
+        } else if (tab === 'diff') {
+          if (picked.hint !== undefined) {
+            body.push(h('div', { className: 'dsh-svnrev-muted', key: 'pickhint' }, picked.hint))
+          }
+          if (picked.diffTruncated === true) {
+            body.push(h('div', { className: 'dsh-svnrev-muted', key: 'picktrunc' }, t('truncation')))
+          }
+          body.push(h('div', { key: 'pickdiff' }, h(DiffView, { text: picked.diff, t })))
+        } else if (picked.fileError !== undefined && picked.fileError !== null) {
+          body.push(h('div', {
+            className: picked.fileMissing === true ? 'dsh-svnrev-muted' : 'dsh-svnrev-err',
+            key: 'pickfail',
+          }, picked.fileMissing === true ? picked.fileError : `${t('failed')}: ${picked.fileError}`))
+        } else if (picked.file === null || picked.file === undefined) {
+          body.push(h('div', { className: 'dsh-svnrev-muted', key: 'picknone' }, t('readingFile')))
+        } else {
+          const file = picked.file
+          const blame = picked.blame
+          const ready = blame !== null && blame !== undefined && blame.phase === 'ready'
+          const blameForView = ready ? blame : null
+          const activeEntry = ready && picked.activeLine !== null
+            ? (blame.entries ?? []).find(entry => entry.line === picked.activeLine)
+            : undefined
+          body.push(h('div', { className: 'dsh-svnrev-codehead', key: 'chead' },
+            h('span', { className: 'dsh-svnrev-muted' },
+              file.source === 'repository' ? t('atRevision', { rev: file.revision }) : t('localVersion')),
+            h('span', { className: 'dsh-svnrev-muted' }, t('shownLines', { count: file.lines ?? 0 })),
+            file.encoding !== null && file.encoding !== undefined && file.encoding !== 'utf-8'
+              && h('span', { className: 'dsh-svnrev-muted' }, t('encodedAs', { encoding: file.encoding })),
+            file.truncated === true && h('span', { className: 'dsh-svnrev-err' }, t('truncation'))))
+          if (file.binary !== true) {
+            body.push(h('div', { className: 'dsh-svnrev-muted', key: 'blamehint' }, t('lineAuthorHint')))
+          }
+          if (blame !== null && blame !== undefined && blame.phase === 'loading') {
+            body.push(h('div', { className: 'dsh-svnrev-muted', key: 'blameload' }, t('blameLoading')))
+          }
+          if (blame !== null && blame !== undefined && blame.phase === 'failed') {
+            body.push(h('div', { className: 'dsh-svnrev-err', key: 'blamefail' },
+              `${t('blameFailed')}: ${blame.message}`))
+          }
+          // A lookup that does not describe the text on screen says so instead
+          // of stamping the wrong author beside a line.
+          if (ready && file.binary !== true) {
+            if (blame.source === 'repository' && file.source === 'working') {
+              body.push(h('div', { className: 'dsh-svnrev-muted', key: 'blamerepo' },
+                t('blameMismatch', { rev: blame.revision })))
+            } else if (blame.source === 'repository') {
+              body.push(h('div', { className: 'dsh-svnrev-muted', key: 'blamerepo2' },
+                t('blameRepository', { rev: blame.revision })))
+            }
+          }
+          if (ready && picked.activeLine !== null && file.binary !== true) {
+            body.push(h('div', { className: 'dsh-svnrev-blamebar', key: 'blamebar' },
+              h('strong', null, t('lineAuthor', { line: picked.activeLine })),
+              activeEntry === undefined
+                ? h('span', { className: 'dsh-svnrev-muted' }, t('unknownAuthor'))
+                : [
+                  h('span', { className: 'dsh-svnrev-kv', key: 'a' },
+                    h('span', { className: 'dsh-svnrev-muted' }, `${t('author')}:`),
+                    h('span', null, activeEntry.author === '' ? t('unknownAuthor') : activeEntry.author)),
+                  h('span', { className: 'dsh-svnrev-kv', key: 'r' },
+                    h('span', { className: 'dsh-svnrev-muted' }, `${t('revision')}:`),
+                    h('span', null, `r${String(activeEntry.revision)}`)),
+                  h('span', { className: 'dsh-svnrev-kv', key: 'd' },
+                    h('span', { className: 'dsh-svnrev-muted' }, `${t('date')}:`),
+                    h('span', null, when(activeEntry.date))),
+                ]))
+          }
+          body.push(h('div', { key: 'code' }, h(FileView, {
+            file,
+            blame: blameForView,
+            activeLine: picked.activeLine,
+            onPickLine: (line, x, y) => { setMenu({ line, x, y }) },
+            t,
+          })))
+        }
+      } else if (mode === 'changes' && current !== null) {
+        if (status.phase === 'loading') {
+          body.push(h('div', { className: 'dsh-svnrev-muted', key: 'sload' }, t('loading')))
+        } else if (status.phase === 'failed') {
+          body.push(h('div', { className: 'dsh-svnrev-err', key: 'sfail' }, `${t('failed')}: ${status.message}`))
+        } else if (status.phase === 'ready') {
+          const files = status.payload.files ?? []
+          // A failed `svn status` or whole-copy diff is not an empty project:
+          // saying "no changes" there would be a false all-clear.
+          if (status.payload.statusError) {
+            body.push(h('div', { className: 'dsh-svnrev-err', key: 'serr' },
+              `${t('failed')}: ${status.payload.statusError}`))
+          }
+          if (status.payload.diffError) {
+            body.push(h('div', { className: 'dsh-svnrev-err', key: 'sderr' },
+              `${t('failed')}: ${status.payload.diffError}`))
+          }
+          if (status.payload.diffTruncated === true) {
+            body.push(h('div', { className: 'dsh-svnrev-muted', key: 'strunc' }, t('truncation')))
+          }
+          if (files.length === 0) {
+            if (!status.payload.statusError) {
+              body.push(h('div', { className: 'dsh-svnrev-muted', key: 'snone' }, t('noChanges')))
+            }
+          } else {
+            // Filtering is client-side: the status route already returned every
+            // row, so a keystroke must not cost another `svn status`.
+            const needle = filter.trim().toLowerCase()
+            const visibleFiles = needle === ''
+              ? files
+              : files.filter(entry => entry.path.toLowerCase().includes(needle))
+            // `svn status` reports working-copy-relative paths; the file route
+            // wants a repository-absolute one, which the copy's own URL supplies.
+            const base = (current.relativeUrl ?? '').replace(/^\^/, '').replace(/\/+$/, '')
+            body.push(h('div', { className: 'dsh-svnrev-bar', key: 'sfilter' },
+              h('input', {
+                type: 'search',
+                className: 'dsh-svnrev-filter',
+                placeholder: t('filter'),
+                'aria-label': t('filter'),
+                value: filter,
+                onChange: (event) => { setFilter(event.target.value) },
+              }),
+              h('span', { className: 'dsh-svnrev-muted' },
+                t('fileCount', { count: visibleFiles.length }))))
+            if (visibleFiles.length === 0) {
+              body.push(h('div', { className: 'dsh-svnrev-muted', key: 'snomatch' }, t('noMatch')))
+            } else {
+              const rows = visibleFiles.map(entry => h('button', {
+                key: entry.path,
+                type: 'button',
+                className: 'dsh-svnrev-row',
+                onClick: () => {
+                  void openFile({
+                    title: entry.path,
+                    wc: current.path,
+                    path: `${base}/${entry.path.replaceAll('\\', '/')}`,
+                    rev: undefined,
+                    diff: entry.diff,
+                    diffTruncated: status.payload.diffTruncated === true,
+                    // An unversioned file has no repository baseline, so its empty
+                    // diff is a fact to explain rather than an empty pane.
+                    hint: entry.item === 'unversioned' ? t('unversionedHint') : undefined,
+                  })
+                },
+              },
+              h('span', { className: 'dsh-svnrev-path' }, entry.path),
+              entry.treeConflict === true
+                && h('span', { className: 'dsh-svnrev-tag dsh-svnrev-tag-d' }, t('conflict')),
+              statusTag(h, t, entry.item)))
+              body.push(h('div', { className: 'dsh-svnrev-list', key: 'slist' }, rows))
+            }
+          }
+        }
+      } else if (mode === 'history' && current !== null) {
+        if (log.phase === 'loading') {
+          body.push(h('div', { className: 'dsh-svnrev-muted', key: 'lload' }, t('loading')))
+        } else if (log.phase === 'failed') {
+          body.push(h('div', { className: 'dsh-svnrev-err', key: 'lfail' }, `${t('failed')}: ${log.message}`))
+        } else if (log.phase === 'ready') {
+          const revisions = log.payload.revisions ?? []
+          if (revisions.length === 0) {
+            body.push(h('div', { className: 'dsh-svnrev-muted', key: 'lnone' }, t('noHistory')))
+          } else {
+            body.push(h('div', { className: 'dsh-svnrev-muted', key: 'lcount' },
+              t('revisionCount', { count: revisions.length })))
+            const rows = revisions.map((revision) => {
+              const files = revision.paths.map(entry => h('button', {
+                key: `${String(revision.revision)}:${entry.path}`,
+                type: 'button',
+                className: 'dsh-svnrev-row',
+                onClick: () => {
+                  void (async () => {
+                    // Load the committed diff first: it is the reason this row is
+                    // interesting, and it comes from a different route than the
+                    // file body.
+                    const payload = await get('diff', {
+                      wc: current.path,
+                      path: entry.path,
+                      rev: String(revision.revision),
+                    }).catch(error => ({ ok: false, message: String(error) }))
+                    await openFile({
+                      title: `${entry.relative ?? entry.path} @ r${String(revision.revision)}`,
+                      wc: current.path,
+                      path: entry.path,
+                      rev: String(revision.revision),
+                      diff: payload.ok === false ? null : payload.diff,
+                      diffTruncated: payload.ok === false ? false : payload.truncated === true,
+                      hint: payload.ok === false ? (payload.message ?? '') : undefined,
+                    })
+                  })()
+                },
+              },
+              h('span', { className: 'dsh-svnrev-path' }, entry.relative ?? entry.path),
+              statusTag(h, t, entry.action)))
+              const message = revision.message.trim() === ''
+                ? h('span', { className: 'dsh-svnrev-muted' }, t('emptyMessage'))
+                : revision.message
+              return h('div', { className: 'dsh-svnrev-rev', key: revision.revision },
+                h('div', { className: 'dsh-svnrev-rev-head' },
+                  h('span', { className: 'dsh-svnrev-rev-num' }, `r${String(revision.revision)}`),
+                  h('span', { className: 'dsh-svnrev-muted' }, revision.author),
+                  h('span', { className: 'dsh-svnrev-muted' }, when(revision.date))),
+                h('div', { className: 'dsh-svnrev-msg' }, message),
+                files)
+            })
+            body.push(h('div', { className: 'dsh-svnrev-list', key: 'llist' }, rows))
+          }
+        }
+      }
+
+      // The per-line author menu, placed at the pointer that opened it.
+      const menuNode = menu === null ? null : h('div', {
+        className: 'dsh-svnrev-menu',
+        style: { left: `${String(menu.x)}px`, top: `${String(menu.y)}px` },
+        role: 'menu',
+        key: 'linemenu',
+        onClick: (event) => { event.stopPropagation() },
+      },
+      h('button', {
+        type: 'button',
+        className: 'dsh-svnrev-menu-item',
+        role: 'menuitem',
+        autoFocus: true,
+        onClick: () => {
+          const line = menu.line
+          setMenu(null)
+          setPicked(previous => (previous === null ? previous : { ...previous, activeLine: line }))
+          void loadBlame()
+        },
+      }, t('menuBlame')))
+
+      return h('div', { className: 'dsh-svnrev-root' },
+        h('style', { key: 'css', dangerouslySetInnerHTML: { __html: css } }),
+        body,
+        menuNode)
+    }
+
+    return {
+      inject: ['slots', 'locale', 'sidebarRightTabs', 'sidebarRight'],
+      apply(ctx) {
+        // Untyped per-locale registration: the namespace is owned by this plugin,
+        // not by the compiled LocaleNamespaceMap.
+        for (const [locale, dict] of Object.entries({ zh, en })) {
+          ctx.effect(() => ctx.locale.register(NS, locale, dict), `svn-review: locale ${locale}`)
+        }
+        const t = ctx.locale.bind(NS)
+
+        // Stage one: the tab type. A page type names no patterns and is opened by kind.
+        ctx.effect(() => ctx.sidebarRightTabs.register({
+          id: ID,
+          kind: 'svn-review',
+          priority: 'extension',
+          keepMounted: true,
+          title: () => t('tab'),
+          guide: [{
+            id: 'review',
+            order: 40,
+            title: () => t('title'),
+            description: () => t('description'),
+            icon: SvnMark,
+          }],
+        }), 'svn-review: tab type')
+
+        // Stage two: the body and the chip, both keyed by the type's id.
+        ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
+          name: 'sidebar.right.pane.tab',
+          key: ID,
+          locale: NS,
+        }, SvnPanel)), 'svn-review: panel')
+
+        ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register({
+          name: 'sidebar.right.pane.tab.title',
+          key: ID,
+          locale: NS,
+        }, SvnTitle)), 'svn-review: title')
+
+        // A session-header control, so the panel is reachable without first
+        // opening the sidebar's own add menu. The `hooks` face is subscribed by
+        // the framework, so the button follows tabs opening and closing.
+        ctx.effect(() => ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
+          name: 'conversation.session.header.utilities',
+          id: 'svn-review-open',
+          order: 55,
+          locale: NS,
+          inject: () => ({
+            open: () => { ctx.sidebarRight.openTab('svn-review') },
+            hooks: { svnOpenTabs: ctx.sidebarRight.openTabs },
+          }),
+        }, SvnOpenButton)), 'svn-review: header action')
+      },
+    }
+  },
+})

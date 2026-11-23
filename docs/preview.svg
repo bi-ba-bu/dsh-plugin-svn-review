@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300" viewBox="0 0 640 300">
+  <rect width="640" height="300" rx="20" fill="#f3f5f9"/>
+  <rect x="32" y="32" width="380" height="236" rx="14" fill="#ffffff" stroke="#c3cedd" stroke-width="2"/>
+  <rect x="52" y="52" width="120" height="14" rx="7" fill="#d6dde7"/>
+  <rect x="52" y="80" width="150" height="24" rx="8" fill="#eef2f8" stroke="#b7c3d2" stroke-width="2"/>
+  <rect x="212" y="80" width="88" height="24" rx="8" fill="#e7edf5"/>
+  <rect x="308" y="80" width="84" height="24" rx="8" fill="#e7edf5"/>
+  <rect x="52" y="122" width="340" height="2" fill="#e5eaf2"/>
+  <g fill="#eef2f8">
+    <rect x="52" y="132" width="340" height="30" rx="8"/>
+    <rect x="52" y="168" width="340" height="30" rx="8"/>
+  </g>
+  <g fill="#d6dde7">
+    <rect x="64" y="141" width="196" height="10" rx="5"/>
+    <rect x="64" y="177" width="150" height="10" rx="5"/>
+  </g>
+  <rect x="330" y="138" width="46" height="16" rx="8" fill="#fdf1dd"/>
+  <rect x="330" y="174" width="46" height="16" rx="8" fill="#e2f4e8"/>
+  <rect x="52" y="212" width="340" height="2" fill="#e5eaf2"/>
+  <rect x="52" y="226" width="220" height="10" rx="5" fill="#e0e5ed"/>
+  <rect x="440" y="32" width="168" height="236" rx="14" fill="#ffffff" stroke="#c3cedd" stroke-width="2"/>
+  <rect x="456" y="48" width="136" height="10" rx="5" fill="#d6dde7"/>
+  <rect x="456" y="70" width="136" height="12" rx="4" fill="#e2f4e8"/>
+  <rect x="456" y="88" width="136" height="12" rx="4" fill="#e2f4e8"/>
+  <rect x="456" y="106" width="104" height="12" rx="4" fill="#e2f4e8"/>
+  <rect x="456" y="128" width="136" height="12" rx="4" fill="#fdeaea"/>
+  <rect x="456" y="146" width="118" height="12" rx="4" fill="#fdeaea"/>
+  <rect x="456" y="168" width="136" height="12" rx="4" fill="#eef2f8"/>
+  <rect x="456" y="186" width="92" height="12" rx="4" fill="#eef2f8"/>
+  <rect x="456" y="208" width="136" height="12" rx="4" fill="#eef2f8"/>
+  <rect x="456" y="226" width="126" height="12" rx="4" fill="#eef2f8"/>
+</svg>

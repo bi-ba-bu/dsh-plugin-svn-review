@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "SVN changes",
+    "description": "Scoped to the current workspace's SVN: each project's local modifications and recent revisions, a whole-numbered file view when you pick one, and a right-click on any line number to see who last changed that line. Read-only: it never commits, updates, or reverts.",
+    "detail": "docs/DETAIL.md"
+  }
+}
