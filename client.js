@@ -64,6 +64,7 @@ window.__ModuleLoader__.load({
       blameRepository: '该文件名含非 ASCII 字符，逐行归属取自版本库 r{rev}，不含本地未提交的改动。',
       blameMismatch: '文件有本地改动，行归属按 r{rev} 计算，可能与当前内容的行号不完全对应。',
       close: '关闭',
+      closeLineAuthor: '关闭提交人信息',
       menuBlame: '查看这行提交人',
       author: '提交人',
       revision: '版本',
@@ -139,6 +140,7 @@ window.__ModuleLoader__.load({
       blameRepository: 'This name is not ASCII, so line authors come from repository r{rev} and exclude uncommitted local edits.',
       blameMismatch: 'The file has local edits, so line authors are computed at r{rev} and may not line up with what is on screen.',
       close: 'Close',
+      closeLineAuthor: 'Close the author details',
       menuBlame: 'See who changed this line',
       author: 'Author',
       revision: 'Revision',
@@ -224,7 +226,12 @@ window.__ModuleLoader__.load({
 .dsh-svnrev-lineno { flex: 0 0 auto; position: sticky; left: 0; z-index: 1; min-width: 5ch; padding: 0 8px 0 6px; text-align: right; color: var(--dsw-alias-label-secondary); background: var(--dsw-alias-bg-layer-2); border-right: 1px solid var(--dsw-alias-border-l1); cursor: context-menu; user-select: none; font: inherit; }
 .dsh-svnrev-lineno:hover { color: var(--dsw-alias-brand-primary); }
 .dsh-svnrev-lineno-active { color: var(--dsw-alias-brand-primary); font-weight: 600; }
-.dsh-svnrev-gutter-blame { flex: 0 0 auto; padding: 0 6px; color: var(--dsw-alias-label-secondary); border-right: 1px solid var(--dsw-alias-border-l1); white-space: pre; }
+/* Date above author. The date is tinted by recency, so it carries its own
+   colour and must not inherit the muted grey of the gutter. Both rows are set
+   tight: two rows must not make every code line twice as tall. */
+.dsh-svnrev-gutter-blame { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-start; padding: 0 6px; color: var(--dsw-alias-label-secondary); border-right: 1px solid var(--dsw-alias-border-l1); white-space: pre; line-height: 1.15; }
+.dsh-svnrev-gutter-date { font-size: 9px; letter-spacing: -.2px; color: var(--dsw-alias-label-primary); }
+.dsh-svnrev-gutter-who { font-size: 10px; color: var(--dsw-alias-label-secondary); }
 .dsh-svnrev-codetext { display: block; padding: 0 10px; white-space: pre; }
 .dsh-svnrev-codehead { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
 
@@ -232,8 +239,13 @@ window.__ModuleLoader__.load({
 .dsh-svnrev-menu { position: fixed; z-index: 60; min-width: 170px; padding: 4px; border-radius: 8px; border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-1); box-shadow: 0 8px 24px rgba(0,0,0,.28); }
 .dsh-svnrev-menu-item { display: block; width: 100%; text-align: left; font: inherit; cursor: pointer; padding: 5px 8px; border-radius: 6px; border: 0; background: transparent; color: var(--dsw-alias-label-primary); }
 .dsh-svnrev-menu-item:hover, .dsh-svnrev-menu-item:focus-visible { background: var(--dsw-alias-bg-layer-2); outline: none; }
-.dsh-svnrev-blamebar { display: flex; gap: 10px; flex-wrap: wrap; align-items: baseline; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-layer-2); }
+.dsh-svnrev-blamebar { position: relative; display: flex; gap: 10px; flex-wrap: wrap; align-items: baseline; padding: 6px 26px 6px 8px; border-radius: 6px; border: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-layer-2); }
 .dsh-svnrev-kv { display: inline-flex; gap: 4px; align-items: baseline; }
+/* Date above author, both left-aligned in one column. */
+.dsh-svnrev-kv-stack { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 1px; }
+.dsh-svnrev-blameclose { position: absolute; top: 4px; right: 4px; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--dsw-alias-label-secondary); font: inherit; line-height: 1; cursor: pointer; }
+.dsh-svnrev-blameclose:hover { background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); }
+.dsh-svnrev-blameclose:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 1px; }
 /* An inline link that reads as text but is a real, focusable button. */
 .dsh-svnrev-link { font: inherit; padding: 0 2px; border: 0; border-radius: 3px; background: transparent; color: var(--dsw-alias-brand-primary); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 .dsh-svnrev-link:hover { background: var(--dsw-alias-bg-layer-1); }
@@ -271,6 +283,13 @@ window.__ModuleLoader__.load({
       if (!iso) return ''
       const at = new Date(iso)
       return Number.isNaN(at.getTime()) ? iso : at.toLocaleString()
+    }
+
+    /** Date without the clock, for the narrow per-line gutter. */
+    const whenDate = (iso) => {
+      if (!iso) return ''
+      const at = new Date(iso)
+      return Number.isNaN(at.getTime()) ? iso : at.toLocaleDateString()
     }
 
     /**
@@ -365,6 +384,11 @@ window.__ModuleLoader__.load({
      * its `source` matches the content on screen: a repository blame over a
      * locally edited file describes a different text, and printing it beside
      * the wrong lines would be worse than printing nothing.
+     *
+     * Beside the line number the gutter carries the commit date above the
+     * author, and shades that date by recency across the whole file: the newest
+     * commit on screen is darkest, the oldest palest. One blame call already
+     * returns every line's date, so the scale costs no extra request.
      */
     function FileView({ file, blame, activeLine, onPickLine, t }) {
       if (file.binary === true) {
@@ -378,24 +402,50 @@ window.__ModuleLoader__.load({
       const lines = text.replace(/\n$/, '').split('\n')
       const aligned = blame !== null && blame !== undefined && blame.source === file.source
       const byLine = new Map()
+      const times = []
       if (aligned) {
-        for (const entry of blame.entries ?? []) byLine.set(entry.line, entry)
+        for (const entry of blame.entries ?? []) {
+          byLine.set(entry.line, entry)
+          const at = Date.parse(entry.date)
+          if (!Number.isNaN(at)) times.push(at)
+        }
+      }
+      // The range the shading is relative to is the range of THIS page, not of
+      // the repository: a file last touched over two years has to show contrast
+      // among its own lines even though every one of them is old.
+      const newest = times.length === 0 ? 0 : Math.max(...times)
+      const oldest = times.length === 0 ? 0 : Math.min(...times)
+      const shade = (iso) => {
+        const at = Date.parse(iso)
+        // A single distinct date, or an unparseable one, has nothing to rank
+        // against: show it at full strength rather than guessing a shade.
+        if (Number.isNaN(at) || newest === oldest) return 1
+        // 0.45 is still legible against the gutter background; going paler
+        // would make the oldest lines look disabled.
+        return 0.45 + 0.55 * ((at - oldest) / (newest - oldest))
       }
       return h('div', { className: 'dsh-svnrev-code', tabIndex: 0, role: 'region', 'aria-label': t('fileTab') },
         lines.map((line, index) => {
           const number = index + 1
           const entry = byLine.get(number)
           return h('div', { className: 'dsh-svnrev-codeline', key: number },
-            // The compact `r{rev} {author}` gutter names who wrote the line; the
-            // full timestamp lives in its tooltip and in the blame bar, because
-            // a whole date column would crowd out the code itself.
+            // Two stacked rows keep the date beside the author without making
+            // the gutter any wider than the code can spare.
             aligned && h('span', {
               className: 'dsh-svnrev-gutter-blame',
               title: entry === undefined
                 ? undefined
                 : `${entry.author} · r${String(entry.revision)}` + (entry.date === '' ? '' : ` · ${when(entry.date)}`),
             },
-            `${entry === undefined ? '' : `r${String(entry.revision)}`} ${entry === undefined ? '' : entry.author}`.trim() || ' '),
+            entry === undefined ? ' ' : [
+              h('span', {
+                className: 'dsh-svnrev-gutter-date',
+                key: 'd',
+                style: { opacity: String(shade(entry.date)) },
+              }, whenDate(entry.date) || ' '),
+              h('span', { className: 'dsh-svnrev-gutter-who', key: 'w' },
+                `r${String(entry.revision)} ${entry.author}`.trim()),
+            ]),
             h('span', {
               className: ['dsh-svnrev-lineno', activeLine === number ? 'dsh-svnrev-lineno-active' : undefined].filter(Boolean).join(' '),
               role: 'button',
@@ -933,21 +983,22 @@ window.__ModuleLoader__.load({
               activeEntry === undefined
                 ? h('span', { className: 'dsh-svnrev-muted' }, t('unknownAuthor'))
                 : [
-                  h('span', { className: 'dsh-svnrev-kv', key: 'a' },
-                    h('span', { className: 'dsh-svnrev-muted' }, `${t('author')}:`),
-                    // The author itself is the entry point the reader reaches
-                    // for first, so it drills into the same revision.
-                    activeEntry.revision === null || activeEntry.author === ''
-                      ? h('span', null, t('unknownAuthor'))
-                      : h('button', {
-                        type: 'button',
-                        className: 'dsh-svnrev-link',
-                        title: t('openRevisionHint', { rev: String(activeEntry.revision) }),
-                        onClick: () => { void openRevision(activeEntry.revision, picked.wc) },
-                      }, activeEntry.author)),
-                  h('span', { className: 'dsh-svnrev-kv', key: 'd' },
-                    h('span', { className: 'dsh-svnrev-muted' }, `${t('date')}:`),
-                    h('span', null, when(activeEntry.date))),
+                  // Date above author, matching the gutter, so the same two
+                  // facts read in the same order in both places.
+                  h('span', { className: 'dsh-svnrev-kv dsh-svnrev-kv-stack', key: 'a' },
+                    h('span', { className: 'dsh-svnrev-muted' }, `${t('date')}: ${when(activeEntry.date)}`),
+                    h('span', null,
+                      h('span', { className: 'dsh-svnrev-muted' }, `${t('author')}: `),
+                      // The author itself is the entry point the reader reaches
+                      // for first, so it drills into the same revision.
+                      activeEntry.revision === null || activeEntry.author === ''
+                        ? h('span', null, t('unknownAuthor'))
+                        : h('button', {
+                          type: 'button',
+                          className: 'dsh-svnrev-link',
+                          title: t('openRevisionHint', { rev: String(activeEntry.revision) }),
+                          onClick: () => { void openRevision(activeEntry.revision, picked.wc) },
+                        }, activeEntry.author))),
                   // The revision number is the way in: clicking it loads that
                   // commit's own record and its changed files.
                   h('span', { className: 'dsh-svnrev-kv', key: 'r' },
@@ -960,7 +1011,19 @@ window.__ModuleLoader__.load({
                         title: t('openRevisionHint', { rev: String(activeEntry.revision) }),
                         onClick: () => { void openRevision(activeEntry.revision, picked.wc) },
                       }, `r${String(activeEntry.revision)}`)),
-                ]))
+                ],
+              // Dismissing the lookup is its own action: clearing `activeLine`
+              // hides the bar and un-highlights the row, while the file and its
+              // blame stay loaded so re-opening a line costs nothing.
+              h('button', {
+                type: 'button',
+                className: 'dsh-svnrev-blameclose',
+                title: t('closeLineAuthor'),
+                'aria-label': t('closeLineAuthor'),
+                onClick: () => {
+                  setPicked(previous => (previous === null ? previous : { ...previous, activeLine: null }))
+                },
+              }, '×')))
           }
           body.push(h('div', { key: 'code' }, h(FileView, {
             file,
