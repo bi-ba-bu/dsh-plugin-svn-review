@@ -1,77 +1,93 @@
-# SVN review
+# SVN 审阅
 
-A right-sidebar panel for reading SVN state without leaving the conversation.
+一个右侧栏面板，让你不用离开对话就能查看 SVN 状态。
 
-## What it shows
+## 展示的内容
 
-Everything is scoped to **the workspace this conversation lives in**. Opening the
-panel in a `saomiao_place` session lists only the checkouts under
-`saomiao_place`; a session outside every registered workspace says so instead of
-listing unrelated projects.
+所有内容都限定在 **当前对话所在的 workspace** 范围内。在 `saomiao_place`
+会话中打开面板，只会列出 `saomiao_place` 下的工作副本；如果一个会话不属于任何
+已注册的 workspace，面板会直接说明这一点，而不是列出无关项目。
 
-- **Projects** — every SVN working copy found under that workspace (up to a
-  configurable depth), with its working revision. The picker spells the chain
-  out — `saomiao_place/service`, `saomiao_place/static` — so two checkouts that
-  share a folder name stay distinct.
-- **Changed files** — the local modifications of the selected working copy, each
-  row tagged with its SVN status, plus a conflict marker. A filter box narrows
-  the list by path.
-- **Revisions** — the most recent commits of that working copy, each with its
-  author, time, message, and changed paths.
+- **项目（Projects）** —— 该 workspace 下找到的所有 SVN 工作副本（搜索深度可配置），
+  并显示其工作副本版本号。选择器会写出完整链路，例如
+  `saomiao_place/service`、`saomiao_place/static`，因此目录名相同的两个工作副本
+  也不会混淆。
+- **改动文件（Changed files）** —— 所选工作副本的本地修改，每行标注对应的 SVN
+  状态，并额外带有冲突标记。过滤框可按路径缩小列表范围。
+- **版本（Revisions）** —— 该工作副本最近的提交记录，每条包含作者、时间、提交说明
+  以及改动的路径。
 
-## Reading a file
+## 读取文件
 
-Picking a changed file, or a file inside a revision, opens it as a whole file
-with a line-number gutter. Two tabs sit above it:
+选中一个改动文件，或者某次版本中的某个文件，就会以完整文件的形式打开，并带有
+行号栏。上方有两个页签：
 
-- **File** — the complete text, one row per line, numbered. Local files are read
-  from disk (as they are right now, including uncommitted edits); a file picked
-  inside a revision comes from the repository at that revision.
-- **Diff** — the unified diff that produced the change.
+- **文件（File）** —— 完整文本，逐行编号。本地文件直接读磁盘（即当前实际内容，
+  包括尚未提交的编辑）；从某次版本中选中的文件则取自该版本对应的仓库内容。
+- **差异（Diff）** —— 产生该改动的统一 diff。
 
-**Right-click a line number** (or focus it and press <kbd>Enter</kbd>) to see who
-last changed that line: author, revision, and date. The attribution then stays
-in the gutter beside every line, so the whole file reads like `svn blame`. One
-lookup serves the whole file, so checking several lines costs one request.
+**右键点击行号**（或聚焦行号后按 <kbd>Enter</kbd>）可以查看该行的最后修改者：
+作者、版本号和日期。之后归属信息会一直显示在每一行左侧的行号栏里，整个文件读起来
+就像 `svn blame`。一次查询即覆盖整个文件，因此查看多行只需一次请求。行号栏里只放
+`r{版本} 作者`，完整时间在鼠标悬停时的提示里，避免日期列挤占代码宽度。
 
-A response that arrives after you moved on is discarded, so a slow lookup can
-never replace what you are looking at.
+如果在你已经切换查看目标之后才返回的响应，会被直接丢弃，所以缓慢的查询永远不会
+覆盖掉你正在看的内容。
 
-## How to open it
+## 从行追到那次提交
 
-Click the **SVN** control in the conversation header, or open the right
-sidebar's add control (the `+` at the end of its tab strip) and pick **SVN
-changes** from the guide. The panel is a normal right-sidebar tab: it docks,
-floats, and is remembered per session like any other.
+行归属告诉你「这行是 r65595 的 chenfei 改的」，但通常还想知道那次提交到底动了什么。
+**点击归属条里的作者名或版本号**（两者都是链接）即可进入该版本的详情：
 
-## Limits
+- 提交人、时间、提交说明；
+- 这次提交改动的所有路径，各自带修改类型（修改 / 新增 / 删除 / 替换）。
 
-- Read-only. It never runs `commit`, `update`, `revert`, `add`, or any other
-  mutating SVN command.
-- Requires the SVN command-line client (`svn`) on the machine running the Host.
-  Set `svnPath` in the plugin configuration when it is not on `PATH`.
-- Only directories under a registered DSH workspace are readable. A project
-  outside every workspace is refused, and a path that escapes the selected
-  working copy is refused.
-- The changed-file diff comes from one whole-working-copy `svn diff`; a very
-  large working copy can hit `maxOutputBytes` and report truncation.
-- Files that are not under version control (`?`) have no repository diff; the
-  panel explains that instead of showing an empty difference.
-- A failed `svn status` is reported as a failure, never as "no local changes".
-- `svn.exe` on Windows receives its arguments through the ANSI code page, so a
-  non-ASCII file name cannot be passed on the command line. Such files are read
-  and blamed through their percent-encoded repository URL instead; the panel
-  says when line authors therefore describe the committed text rather than
-  uncommitted local edits.
-- Binary files are named as such rather than rendered, and a very large file is
-  clipped at `maxOutputBytes` with a visible notice.
+再点击其中任一路径，就会打开该文件**在那个版本**的内容——正文和行归属都按该提交
+计算，因此这一步看到的正是改动本身；切到「差异」页签还能看到该文件在这一版的具体
+增删行。这个文件可以直接继续点行号查作者，形成「版本 → 文件 → 行 → 版本」的闭环。
 
-## Configuration
+返回是分层的，不会把你送回开头：从版本里打开的文件，「返回」回到该版本的文件列表；
+在该文件上再「返回」，才回到项目的改动列表。
 
-| Key | Default | Meaning |
+版本详情按 `工作副本@版本号` 缓存，同一版本第二次进入不再请求。
+
+如果某条路径显示为灰色且带「不在当前工作副本内」标记，说明它属于分支复制之前
+继承下来的历史（或已被移走），在当前工作副本里打不开，所以那一行是不可点击的，
+而不是点了才报错。
+
+## 如何打开
+
+点击对话头部（conversation header）的 **SVN** 控件，或者打开右侧栏的添加控件
+（页签栏末尾的 `+`），在引导中选 **SVN changes**。该面板就是一个普通的右侧栏页签：
+可以停靠、浮动，并像其他页签一样按会话记忆状态。
+
+## 限制
+
+- 只读。它绝不会执行 `commit`、`update`、`revert`、`add` 等任何会改动状态的
+  SVN 命令。
+- 需要在运行 Host 的机器上安装 SVN 命令行客户端（`svn`）。如果它不在 `PATH`
+  中，可通过插件配置里的 `svnPath` 指定。
+- 只能读取已注册的 DSH workspace 下的目录。不属于任何 workspace 的项目会被拒绝；
+  越过所选工作副本范围的路径同样会被拒绝。
+- 改动文件的 diff 来自对整个工作副本执行的一次 `svn diff`；工作副本非常大时可能
+  触及 `maxOutputBytes` 并提示已截断。
+- 不受版本控制的文件（状态为 `?`）没有仓库侧的 diff，面板会明确说明这一点，
+  而不是显示一个空的差异。
+- `svn status` 执行失败会被如实报告为失败，绝不会被当成“没有本地改动”。
+- Windows 上的 `svn.exe` 通过 ANSI 代码页接收参数，因此无法在命令行上传递非 ASCII
+  文件名。这类文件会改用其百分号编码（percent-encoded）的仓库 URL 来读取和标注
+  归属；此时面板会提示行归属描述的是已提交的文本，而不是未提交的本地修改。
+- 二进制文件会被标注为二进制而不渲染；超大文件会在 `maxOutputBytes` 处被截断，
+  并显示可见提示。
+- 版本详情能显示提交说明与改动路径，但仓库里某些提交（例如改在其他分支上的提交）
+  的路径不属于当前工作副本，这类路径只能看到名字，打不开内容。
+
+## 配置
+
+| 键 | 默认值 | 含义 |
 |---|---|---|
-| `svnPath` | `svn` | Executable name or absolute path of the SVN client. |
-| `scanDepth` | `3` | Directory levels searched below each workspace root. |
-| `logLimit` | `30` | Revision page size for the history view. |
-| `maxOutputBytes` | `8388608` | Ceiling on any one `svn` invocation's stdout, and on one file view. |
-| `timeoutMs` | `45000` | Deadline for one `svn` invocation. |
+| `svnPath` | `svn` | SVN 客户端的可执行文件名或绝对路径。 |
+| `scanDepth` | `3` | 在每个 workspace 根目录下搜索的目录层级数。 |
+| `logLimit` | `30` | 历史视图每页的版本条数。 |
+| `maxOutputBytes` | `8388608` | 单次 `svn` 调用 stdout 的上限，同时也是单个文件视图的上限。 |
+| `timeoutMs` | `45000` | 单次 `svn` 调用的超时时间。 |

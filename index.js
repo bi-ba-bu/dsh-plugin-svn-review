@@ -7,6 +7,7 @@
  *   GET svn-review/projects  — working copies found under a workspace root
  *   GET svn-review/status    — local modifications of one working copy + its diff
  *   GET svn-review/log       — recent revisions with their changed paths
+ *   GET svn-review/revision  — one revision's author, date, message, changed paths
  *   GET svn-review/diff      — the unified diff of one file at one revision
  *
  * Two SVN quirks drive the implementation:
@@ -32,6 +33,7 @@ const WORKSPACES_PATH = '/svn-review/workspaces'
 const PROJECTS_PATH = '/svn-review/projects'
 const STATUS_PATH = '/svn-review/status'
 const LOG_PATH = '/svn-review/log'
+const REVISION_PATH = '/svn-review/revision'
 const DIFF_PATH = '/svn-review/diff'
 const FILE_PATH = '/svn-review/file'
 const BLAME_PATH = '/svn-review/blame'
@@ -260,6 +262,27 @@ function parseLog(xml) {
     })
   }
   return revisions
+}
+
+/**
+ * Rewrite one `svn log -v` path for the browser half.
+ *
+ * Repository paths arrive absolute (`/trunk/…`), but the file route wants a
+ * working-copy-relative one — and `relative` is also what the reader recognises
+ * as "this file in my project". A path outside the copy's own URL is not a bug:
+ * a branch created by `svn copy` inherits its parent's earlier history, whose
+ * paths lie outside the branch. Those rows are flagged instead of being renamed
+ * to something they are not.
+ * @param entry - one parsed log path.
+ * @param base - the working copy's `^/…` URL with the caret removed.
+ */
+function describePath(entry, base) {
+  const inside = base !== '' && (entry.path === base || entry.path.startsWith(`${base}/`))
+  return {
+    ...entry,
+    relative: inside ? entry.path.slice(base.length).replace(/^\/+/, '') : entry.path.replace(/^\/+/, ''),
+    inCopy: inside,
+  }
 }
 
 /** Split one working-copy diff into per-file chunks keyed by their relative path. */
@@ -626,17 +649,95 @@ export function apply(ctx, rawConfig) {
         // them relative to the working copy's own URL to match local files.
         revisions: parseLog(log.stdout).map(revision => ({
           ...revision,
-          paths: revision.paths.map((entry) => {
-            const base = parsed?.relativeUrl?.replace(/^\^/, '') ?? ''
-            const relative = base !== '' && entry.path.startsWith(base)
-              ? entry.path.slice(base.length).replace(/^\/+/, '')
-              : entry.path.replace(/^\/+/, '')
-            return { ...entry, relative }
-          }),
+          paths: revision.paths.map(entry => describePath(entry, parsed?.relativeUrl?.replace(/^\^/, '') ?? '')),
         })),
       })
     },
   }), `svn-review: GET ${LOG_PATH}`)
+
+  /**
+   * One revision on its own: who committed it, when, why, and every path it
+   * touched.
+   *
+   * The log route answers "the last N revisions of this working copy". A line
+   * author is often much older than that window, so the panel needs to jump
+   * straight to one revision by number — hence this separate route instead of
+   * a wider `log` request.
+   */
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'exact',
+    path: REVISION_PATH,
+    handler: async (req, res) => {
+      if (rejected(req, res)) return
+      const params = query(req)
+      const wc = params.get('wc') ?? ''
+      if (!permitted(wc)) {
+        sendJson(res, 400, { ok: false, code: 'forbidden-path', message: 'wc is outside every workspace' })
+        return
+      }
+      const revision = params.get('rev') ?? ''
+      if (!/^\d+$/.test(revision)) {
+        sendJson(res, 400, { ok: false, code: 'bad-request', message: 'a numeric rev is required' })
+        return
+      }
+      const controller = new AbortController()
+      req.on('close', () => { controller.abort() })
+      const info = await svn(['info', '--xml', '--non-interactive'], wc, controller.signal)
+      if (!info.ok) {
+        sendJson(res, 200, { ok: false, code: info.code, message: info.message })
+        return
+      }
+      // `-r N:N` asks for exactly one revision, but `svn log` is still scoped to
+      // the copy's own URL: a revision that touched nothing below this path
+      // answers with an empty log, and that is NOT a missing revision. The
+      // repository root is asked second, which reports the commit wherever it
+      // landed. Reading only the first answer would hide every commit on a
+      // sibling branch.
+      const atRevision = (target) => svn(
+        ['log', '-v', '--xml', '--non-interactive', '-r', `${revision}:${revision}`, target],
+        wc,
+        controller.signal,
+      )
+      let log = await atRevision('.')
+      if (log.ok && parseLog(log.stdout).length === 0) {
+        const root = await atRevision(`^/@${revision}`)
+        if (root.ok && parseLog(root.stdout).length > 0) log = root
+      }
+      if (!log.ok) {
+        // A revision beyond the repository's head fails the whole command with
+        // `E160006: No such revision` rather than returning an empty log, so it
+        // is named here as the ordinary fact it is.
+        if (/E160006|No such revision/i.test(log.message)) {
+          sendJson(res, 200, { ok: false, code: 'no-such-revision', revision, message: log.message })
+          return
+        }
+        sendJson(res, 200, { ok: false, code: log.code, message: log.message })
+        return
+      }
+      const parsed = parseInfo(info.stdout)
+      const found = parseLog(log.stdout).find(entry => String(entry.revision) === revision)
+      if (found === undefined) {
+        // Both the copy and the repository root came back empty: the revision
+        // either does not exist yet, or this credential cannot see it.
+        sendJson(res, 200, {
+          ok: false,
+          code: 'no-such-revision',
+          revision,
+          message: `r${revision} is not available in this working copy`,
+        })
+        return
+      }
+      const base = parsed?.relativeUrl?.replace(/^\^/, '') ?? ''
+      sendJson(res, 200, {
+        ok: true,
+        revision: found.revision,
+        author: found.author,
+        date: found.date,
+        message: found.message,
+        paths: found.paths.map(entry => describePath(entry, base)),
+      })
+    },
+  }), `svn-review: GET ${REVISION_PATH}`)
 
   ctx.effect(() => ctx.webServer.register({
     kind: 'exact',

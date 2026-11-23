@@ -69,6 +69,17 @@ window.__ModuleLoader__.load({
       revision: '版本',
       date: '时间',
       unknownAuthor: '未知',
+      // Revision drill-down from a line's author.
+      openRevisionHint: '查看 r{rev} 这次提交改动的文件',
+      revisionLoading: '正在读取提交信息…',
+      revisionFailed: '提交信息读取失败',
+      revisionMissing: '这个工作副本里没有 r{rev} 的提交信息（可能已被删除，或当前账号没有权限）。',
+      revisionNoFiles: '这次提交没有记录改动路径。',
+      backToRevision: '返回该次提交',
+      backToFile: '返回文件内容',
+      revisionFiles: '改动的文件',
+      outsideCopy: '不在当前工作副本内',
+      outsideCopyHint: '这个路径属于分支复制之前的历史（或被移动走了），在当前工作副本里打不开。',
       encodedAs: '编码 {encoding}',
       notInRevision: '这个文件在 r{rev} 时还不存在（或已被删除），因此没有该版本的内容。',
     }
@@ -133,6 +144,17 @@ window.__ModuleLoader__.load({
       revision: 'Revision',
       date: 'Date',
       unknownAuthor: 'unknown',
+      // Revision drill-down from a line's author.
+      openRevisionHint: 'See the files changed by r{rev}',
+      revisionLoading: 'Loading the revision…',
+      revisionFailed: 'Revision lookup failed',
+      revisionMissing: 'This working copy has no information for r{rev} (deleted, or not readable with the current credentials).',
+      revisionNoFiles: 'This revision records no changed paths.',
+      backToRevision: 'Back to this revision',
+      backToFile: 'Back to the file',
+      revisionFiles: 'Changed files',
+      outsideCopy: 'outside this working copy',
+      outsideCopyHint: 'This path belongs to history from before the branch was copied (or was moved away), so it cannot be opened here.',
       encodedAs: 'encoding {encoding}',
       notInRevision: 'This file does not exist at r{rev} (not born yet, or already deleted), so there is no content for that revision.',
     }
@@ -171,6 +193,8 @@ window.__ModuleLoader__.load({
 .dsh-svnrev-row { display: flex; align-items: baseline; gap: 6px; padding: 4px 6px; border-radius: 6px; cursor: pointer; text-align: left; border: 1px solid transparent; background: transparent; color: inherit; font: inherit; width: 100%; }
 .dsh-svnrev-row:hover { background: var(--dsw-alias-bg-layer-2); }
 .dsh-svnrev-row[aria-current="true"] { background: var(--dsw-alias-bg-layer-2); border-color: var(--dsw-alias-border-l2); }
+.dsh-svnrev-row:disabled { cursor: default; opacity: .65; }
+.dsh-svnrev-row:disabled:hover { background: transparent; }
 .dsh-svnrev-path { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .dsh-svnrev-tag { flex: 0 0 auto; font-size: var(--dsw-font-xxs-11, 11px); padding: 1px 5px; border-radius: 999px; border: 1px solid var(--dsw-alias-border-l1); color: var(--dsw-alias-label-secondary); }
 .dsh-svnrev-tag-m { color: var(--dsw-alias-state-warn-primary); }
@@ -210,6 +234,10 @@ window.__ModuleLoader__.load({
 .dsh-svnrev-menu-item:hover, .dsh-svnrev-menu-item:focus-visible { background: var(--dsw-alias-bg-layer-2); outline: none; }
 .dsh-svnrev-blamebar { display: flex; gap: 10px; flex-wrap: wrap; align-items: baseline; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-layer-2); }
 .dsh-svnrev-kv { display: inline-flex; gap: 4px; align-items: baseline; }
+/* An inline link that reads as text but is a real, focusable button. */
+.dsh-svnrev-link { font: inherit; padding: 0 2px; border: 0; border-radius: 3px; background: transparent; color: var(--dsw-alias-brand-primary); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.dsh-svnrev-link:hover { background: var(--dsw-alias-bg-layer-1); }
+.dsh-svnrev-link:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 1px; }
 @media (max-width: 720px) { .dsh-svnrev-open-label { display: none; } }
 `
 
@@ -358,8 +386,16 @@ window.__ModuleLoader__.load({
           const number = index + 1
           const entry = byLine.get(number)
           return h('div', { className: 'dsh-svnrev-codeline', key: number },
-            aligned && h('span', { className: 'dsh-svnrev-gutter-blame' },
-              `${entry === undefined ? '' : `r${String(entry.revision)}`} ${entry === undefined ? '' : entry.author}`.trim() || ' '),
+            // The compact `r{rev} {author}` gutter names who wrote the line; the
+            // full timestamp lives in its tooltip and in the blame bar, because
+            // a whole date column would crowd out the code itself.
+            aligned && h('span', {
+              className: 'dsh-svnrev-gutter-blame',
+              title: entry === undefined
+                ? undefined
+                : `${entry.author} · r${String(entry.revision)}` + (entry.date === '' ? '' : ` · ${when(entry.date)}`),
+            },
+            `${entry === undefined ? '' : `r${String(entry.revision)}`} ${entry === undefined ? '' : entry.author}`.trim() || ' '),
             h('span', {
               className: ['dsh-svnrev-lineno', activeLine === number ? 'dsh-svnrev-lineno-active' : undefined].filter(Boolean).join(' '),
               role: 'button',
@@ -398,6 +434,13 @@ window.__ModuleLoader__.load({
       const [status, setStatus] = useState({ phase: 'idle' })
       const [log, setLog] = useState({ phase: 'idle' })
       const [picked, setPicked] = useState(null)
+      const [revision, setRevision] = useState(null)
+      // Which of the two drill-downs owns the pane. A revision can be reached
+      // from a file's line author (so `picked` stays loaded behind it) and a
+      // file can be opened from a revision's file list (so `revision` stays
+      // loaded behind it); a plain boolean says which one is on top, which the
+      // presence of either state alone cannot express.
+      const [revisionView, setRevisionView] = useState(false)
       const [tab, setTab] = useState('file')
       const [filter, setFilter] = useState('')
       const [generation, setGeneration] = useState(0)
@@ -406,6 +449,10 @@ window.__ModuleLoader__.load({
       const pickToken = useRef(0)
       /** Blame results keyed by `path@rev`, so the same line costs one request. */
       const blameCache = useRef(new Map())
+      /** One revision's own metadata, keyed by `wc@rev`. */
+      const revisionCache = useRef(new Map())
+      /** Token of the newest revision lookup; same rule as `pickToken`. */
+      const revisionToken = useRef(0)
 
       // Projects: one scan per panel life, and again after an explicit rescan.
       // The scan is scoped to the workspace THIS session lives in.
@@ -499,6 +546,11 @@ window.__ModuleLoader__.load({
           diff: request.diff,
           diffTruncated: request.diffTruncated === true,
           hint: request.hint,
+          // Which revision's file list opened this file, if any. This is what
+          // makes "back" unambiguous: a file opened from r65595's list returns
+          // to r65595, while a file opened from the project's own change list
+          // returns to that list even if a revision was inspected meanwhile.
+          fromRevision: request.fromRevision,
           file: null,
           fileError: null,
           fileMissing: false,
@@ -572,12 +624,101 @@ window.__ModuleLoader__.load({
       /** Any move that changes what the list means also closes the open file. */
       const resetView = () => {
         pickToken.current += 1
+        revisionToken.current += 1
         setPicked(null)
+        setRevision(null)
+        setRevisionView(false)
         setFilter('')
         setMenu(null)
       }
 
+      /**
+       * Drill into one revision: who committed it, when, why, and the files it
+       * touched. This is the step between "line 42 was last changed by chenfei
+       * at r65595" and "here is what r65595 actually did".
+       *
+       * The open file stays in state, so backing out of the revision returns to
+       * the line the reader started from.
+       */
+      const openRevision = useCallback(async (rev, wc) => {
+        const token = revisionToken.current + 1
+        revisionToken.current = token
+        setMenu(null)
+        setRevisionView(true)
+        const key = `${wc}@${rev}`
+        const cached = revisionCache.current.get(key)
+        if (cached !== undefined) {
+          setRevision(cached)
+          return
+        }
+        setRevision({ phase: 'loading', rev, wc })
+        try {
+          const payload = await get('revision', { wc, rev: String(rev) })
+          if (revisionToken.current !== token) return
+          const outcome = payload.ok === false
+            ? {
+              phase: 'failed',
+              rev,
+              wc,
+              missing: payload.code === 'no-such-revision',
+              message: payload.message ?? '',
+            }
+            : { phase: 'ready', rev, wc, ...payload }
+          revisionCache.current.set(key, outcome)
+          setRevision(outcome)
+        } catch (error) {
+          if (revisionToken.current !== token) return
+          setRevision({ phase: 'failed', rev, wc, missing: false, message: String(error) })
+        }
+      }, [])
+
       const body = []
+
+      /**
+       * One changed path of one revision, as a row that opens the file at that
+       * revision.
+       *
+       * A row whose path lies outside the working copy (history inherited from
+       * before a branch copy) is shown but disabled: opening it would always
+       * fail, and a click that cannot work is worse than a row that says why.
+       */
+      const pathRow = (entry, rev, wc) => {
+        const outside = entry.inCopy === false
+        return h('button', {
+          key: `${String(rev)}:${entry.path}`,
+          type: 'button',
+          className: 'dsh-svnrev-row',
+          disabled: outside,
+          title: outside ? t('outsideCopyHint') : undefined,
+          onClick: () => {
+            void (async () => {
+              // The revision card stays loaded behind the file, so "back"
+              // returns to this revision's file list.
+              setRevisionView(false)
+              // The committed diff is the reason this row is interesting, and
+              // it comes from a different route than the file body.
+              const payload = await get('diff', {
+                wc,
+                path: entry.path,
+                rev: String(rev),
+              }).catch(error => ({ ok: false, message: String(error) }))
+              await openFile({
+                title: `${entry.relative ?? entry.path} @ r${String(rev)}`,
+                wc,
+                path: entry.path,
+                rev: String(rev),
+                diff: payload.ok === false ? null : payload.diff,
+                diffTruncated: payload.ok === false ? false : payload.truncated === true,
+                hint: payload.ok === false ? (payload.message ?? '') : undefined,
+                fromRevision: rev,
+              })
+            })()
+          },
+        },
+        h('span', { className: 'dsh-svnrev-path' }, entry.relative ?? entry.path),
+        outside && h('span', { className: 'dsh-svnrev-tag dsh-svnrev-tag-u' }, t('outsideCopy')),
+        statusTag(h, t, entry.action))
+      }
 
       // Header: project picker, the two views, one reload control.
       body.push(h('div', { className: 'dsh-svnrev-bar', key: 'bar' },
@@ -651,13 +792,77 @@ window.__ModuleLoader__.load({
           `${current.label ?? current.name} · r${String(current.revision ?? '?')}`))
       }
 
-      // A picked file replaces the list.
-      if (picked !== null) {
+      // The revision card owns the pane while it is on top. It is reached from a
+      // line's author (a file stays loaded behind it) or from the history list,
+      // so "back" leads to whichever of those the reader came from.
+      if (revision !== null && revisionView === true) {
+        body.push(h('div', { className: 'dsh-svnrev-bar', key: 'revbar' },
+          h('button', {
+            type: 'button', className: 'dsh-svnrev-btn',
+            onClick: () => {
+              if (picked !== null) {
+                // Return to the file this revision was opened from, keeping
+                // its line and its blame as they were.
+                setRevisionView(false)
+                return
+              }
+              revisionToken.current += 1
+              setRevision(null)
+            },
+          }, picked !== null ? t('backToFile') : t('back'))))
+        if (revision.phase === 'loading') {
+          body.push(h('div', { className: 'dsh-svnrev-muted', key: 'revload' }, t('revisionLoading')))
+        } else if (revision.phase === 'failed') {
+          body.push(h('div', {
+            className: revision.missing === true ? 'dsh-svnrev-muted' : 'dsh-svnrev-err',
+            key: 'revfail',
+          }, revision.missing === true
+            ? t('revisionMissing', { rev: String(revision.rev) })
+            : `${t('revisionFailed')}: ${revision.message}`))
+        } else {
+          body.push(h('div', { className: 'dsh-svnrev-rev', key: 'revcard' },
+            h('div', { className: 'dsh-svnrev-rev-head' },
+              h('span', { className: 'dsh-svnrev-rev-num' }, `r${String(revision.revision)}`),
+              h('span', { className: 'dsh-svnrev-muted' },
+                revision.author === '' ? t('unknownAuthor') : revision.author),
+              h('span', { className: 'dsh-svnrev-muted' }, when(revision.date))),
+            h('div', { className: 'dsh-svnrev-msg' },
+              revision.message.trim() === ''
+                ? h('span', { className: 'dsh-svnrev-muted' }, t('emptyMessage'))
+                : revision.message)))
+          const files = revision.paths ?? []
+          if (files.length === 0) {
+            body.push(h('div', { className: 'dsh-svnrev-muted', key: 'revnone' }, t('revisionNoFiles')))
+          } else {
+            body.push(h('div', { className: 'dsh-svnrev-muted', key: 'revcount' },
+              `${t('revisionFiles')} · ${t('fileCount', { count: files.length })}`))
+            body.push(h('div', { className: 'dsh-svnrev-list', key: 'revlist' },
+              files.map(entry => pathRow(entry, revision.revision, revision.wc))))
+          }
+        }
+      }
+
+      // A picked file replaces the list, unless a revision card is on top of it.
+      if (picked !== null && revisionView === false) {
         body.push(h('div', { className: 'dsh-svnrev-bar', key: 'pickbar' },
           h('button', {
             type: 'button', className: 'dsh-svnrev-btn',
-            onClick: () => { resetView() },
-          }, t('back')),
+            // A file opened from a revision's own file list returns to that
+            // revision. Any other file returns to its project list, even if a
+            // revision was inspected from it in the meantime — using "a
+            // revision exists" as the test would loop back and forth forever.
+            onClick: () => {
+              if (picked.fromRevision !== undefined && revision !== null) {
+                pickToken.current += 1
+                setPicked(null)
+                setRevisionView(true)
+                return
+              }
+              resetView()
+            },
+          }, picked.fromRevision !== undefined && revision !== null
+            ? t('backToRevision')
+            : t('back')),
           h('button', {
             type: 'button', className: 'dsh-svnrev-btn',
             'aria-pressed': tab === 'file',
@@ -730,13 +935,31 @@ window.__ModuleLoader__.load({
                 : [
                   h('span', { className: 'dsh-svnrev-kv', key: 'a' },
                     h('span', { className: 'dsh-svnrev-muted' }, `${t('author')}:`),
-                    h('span', null, activeEntry.author === '' ? t('unknownAuthor') : activeEntry.author)),
-                  h('span', { className: 'dsh-svnrev-kv', key: 'r' },
-                    h('span', { className: 'dsh-svnrev-muted' }, `${t('revision')}:`),
-                    h('span', null, `r${String(activeEntry.revision)}`)),
+                    // The author itself is the entry point the reader reaches
+                    // for first, so it drills into the same revision.
+                    activeEntry.revision === null || activeEntry.author === ''
+                      ? h('span', null, t('unknownAuthor'))
+                      : h('button', {
+                        type: 'button',
+                        className: 'dsh-svnrev-link',
+                        title: t('openRevisionHint', { rev: String(activeEntry.revision) }),
+                        onClick: () => { void openRevision(activeEntry.revision, picked.wc) },
+                      }, activeEntry.author)),
                   h('span', { className: 'dsh-svnrev-kv', key: 'd' },
                     h('span', { className: 'dsh-svnrev-muted' }, `${t('date')}:`),
                     h('span', null, when(activeEntry.date))),
+                  // The revision number is the way in: clicking it loads that
+                  // commit's own record and its changed files.
+                  h('span', { className: 'dsh-svnrev-kv', key: 'r' },
+                    h('span', { className: 'dsh-svnrev-muted' }, `${t('revision')}:`),
+                    activeEntry.revision === null
+                      ? h('span', null, '—')
+                      : h('button', {
+                        type: 'button',
+                        className: 'dsh-svnrev-link',
+                        title: t('openRevisionHint', { rev: String(activeEntry.revision) }),
+                        onClick: () => { void openRevision(activeEntry.revision, picked.wc) },
+                      }, `r${String(activeEntry.revision)}`)),
                 ]))
           }
           body.push(h('div', { key: 'code' }, h(FileView, {
@@ -747,7 +970,7 @@ window.__ModuleLoader__.load({
             t,
           })))
         }
-      } else if (mode === 'changes' && current !== null) {
+      } else if (revisionView === false && mode === 'changes' && current !== null) {
         if (status.phase === 'loading') {
           body.push(h('div', { className: 'dsh-svnrev-muted', key: 'sload' }, t('loading')))
         } else if (status.phase === 'failed') {
@@ -821,7 +1044,7 @@ window.__ModuleLoader__.load({
             }
           }
         }
-      } else if (mode === 'history' && current !== null) {
+      } else if (revisionView === false && mode === 'history' && current !== null) {
         if (log.phase === 'loading') {
           body.push(h('div', { className: 'dsh-svnrev-muted', key: 'lload' }, t('loading')))
         } else if (log.phase === 'failed') {
@@ -834,34 +1057,7 @@ window.__ModuleLoader__.load({
             body.push(h('div', { className: 'dsh-svnrev-muted', key: 'lcount' },
               t('revisionCount', { count: revisions.length })))
             const rows = revisions.map((revision) => {
-              const files = revision.paths.map(entry => h('button', {
-                key: `${String(revision.revision)}:${entry.path}`,
-                type: 'button',
-                className: 'dsh-svnrev-row',
-                onClick: () => {
-                  void (async () => {
-                    // Load the committed diff first: it is the reason this row is
-                    // interesting, and it comes from a different route than the
-                    // file body.
-                    const payload = await get('diff', {
-                      wc: current.path,
-                      path: entry.path,
-                      rev: String(revision.revision),
-                    }).catch(error => ({ ok: false, message: String(error) }))
-                    await openFile({
-                      title: `${entry.relative ?? entry.path} @ r${String(revision.revision)}`,
-                      wc: current.path,
-                      path: entry.path,
-                      rev: String(revision.revision),
-                      diff: payload.ok === false ? null : payload.diff,
-                      diffTruncated: payload.ok === false ? false : payload.truncated === true,
-                      hint: payload.ok === false ? (payload.message ?? '') : undefined,
-                    })
-                  })()
-                },
-              },
-              h('span', { className: 'dsh-svnrev-path' }, entry.relative ?? entry.path),
-              statusTag(h, t, entry.action)))
+              const files = revision.paths.map(entry => pathRow(entry, revision.revision, current.path))
               const message = revision.message.trim() === ''
                 ? h('span', { className: 'dsh-svnrev-muted' }, t('emptyMessage'))
                 : revision.message
