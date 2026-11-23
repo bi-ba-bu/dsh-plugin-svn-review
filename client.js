@@ -59,6 +59,7 @@ window.__ModuleLoader__.load({
       localVersion: '工作副本当前版本',
       lineAuthor: '第 {line} 行提交人',
       lineAuthorHint: '右键行号可查看该行提交人',
+      lineAuthorCloseHint: '右键行号可查看其他行提交人，或关闭提交人信息',
       blameLoading: '正在查询逐行归属…',
       blameFailed: '逐行归属查询失败',
       blameRepository: '该文件名含非 ASCII 字符，逐行归属取自版本库 r{rev}，不含本地未提交的改动。',
@@ -137,6 +138,7 @@ window.__ModuleLoader__.load({
       localVersion: 'as it is on disk',
       lineAuthor: 'Author of line {line}',
       lineAuthorHint: 'Right-click a line number to see who last changed that line',
+      lineAuthorCloseHint: 'Right-click a line number to look up another line, or to close these author details',
       blameLoading: 'Looking up line authors…',
       blameFailed: 'Line-author lookup failed',
       blameRepository: 'This name is not ASCII, so line authors come from repository r{rev} and exclude uncommitted local edits.',
@@ -637,7 +639,10 @@ body[data-ds-dark-theme] .dsh-svnrev-age-4 { color: #f0857a; }
       const openFile = useCallback(async (request) => {
         const token = pickToken.current + 1
         pickToken.current = token
-        setTab('file')
+        // A file reached from the local-changes list opens on its diff: that
+        // list exists to show what changed, so the diff is the answer and the
+        // whole file is the follow-up. Anything else opens on the file body.
+        setTab(request.tab ?? 'file')
         setPicked({
           phase: 'loading',
           title: request.title,
@@ -657,6 +662,11 @@ body[data-ds-dark-theme] .dsh-svnrev-age-4 { color: #f0857a; }
           fileMissing: false,
           blame: null,
           activeLine: null,
+          // Whether the per-line author information is on screen at all. It
+          // stays false until a line is looked up, and "close the author
+          // details" turns the whole overlay off — gutter included — without
+          // discarding the blame that was already fetched.
+          blameVisible: false,
         })
         try {
           const payload = await get('file', { wc: request.wc, path: request.path, rev: request.rev })
@@ -704,21 +714,23 @@ body[data-ds-dark-theme] .dsh-svnrev-age-4 { color: #f0857a; }
         const key = `${picked.path}@${picked.rev ?? ''}`
         const cached = blameCache.current.get(key)
         if (cached !== undefined) {
-          setPicked(previous => (previous === null ? previous : { ...previous, blame: cached }))
+          setPicked(previous => (previous === null ? previous : { ...previous, blame: cached, blameVisible: true }))
           return
         }
-        setPicked(previous => (previous === null ? previous : { ...previous, blame: { phase: 'loading' } }))
+        setPicked(previous => (previous === null ? previous : { ...previous, blame: { phase: 'loading' }, blameVisible: true }))
         try {
           const payload = await get('blame', { wc: picked.wc, path: picked.path, rev: picked.rev })
           const outcome = payload.ok === false
             ? { phase: 'failed', message: payload.message ?? '' }
             : { phase: 'ready', ...payload }
           blameCache.current.set(key, outcome)
-          setPicked(previous => (previous === null || previous.path !== picked.path ? previous : { ...previous, blame: outcome }))
+          setPicked(previous => (previous === null || previous.path !== picked.path
+            ? previous
+            : { ...previous, blame: outcome, blameVisible: true }))
         } catch (error) {
           setPicked(previous => (previous === null || previous.path !== picked.path
             ? previous
-            : { ...previous, blame: { phase: 'failed', message: String(error) } }))
+            : { ...previous, blame: { phase: 'failed', message: String(error) }, blameVisible: true }))
         }
       }, [picked])
 
@@ -996,8 +1008,13 @@ body[data-ds-dark-theme] .dsh-svnrev-age-4 { color: #f0857a; }
           const file = picked.file
           const blame = picked.blame
           const ready = blame !== null && blame !== undefined && blame.phase === 'ready'
-          const blameForView = ready ? blame : null
-          const activeEntry = ready && picked.activeLine !== null
+          // Everything that shows a per-line author hangs off this one flag, so
+          // "close the author details" removes the whole overlay — gutter dates
+          // and authors, the legend, the source notes, and the bar — instead of
+          // leaving parts of it behind.
+          const authorShown = ready && picked.blameVisible === true
+          const blameForView = authorShown ? blame : null
+          const activeEntry = authorShown && picked.activeLine !== null
             ? (blame.entries ?? []).find(entry => entry.line === picked.activeLine)
             : undefined
           body.push(h('div', { className: 'dsh-svnrev-codehead', key: 'chead' },
@@ -1008,11 +1025,12 @@ body[data-ds-dark-theme] .dsh-svnrev-age-4 { color: #f0857a; }
               && h('span', { className: 'dsh-svnrev-muted' }, t('encodedAs', { encoding: file.encoding })),
             file.truncated === true && h('span', { className: 'dsh-svnrev-err' }, t('truncation'))))
           if (file.binary !== true) {
-            body.push(h('div', { className: 'dsh-svnrev-muted', key: 'blamehint' }, t('lineAuthorHint')))
+            body.push(h('div', { className: 'dsh-svnrev-muted', key: 'blamehint' },
+              authorShown ? t('lineAuthorCloseHint') : t('lineAuthorHint')))
           }
           // The palette is meaningless without its key: five coloured dates say
           // nothing about which end is newer until this line spells it out.
-          if (ready && file.binary !== true) {
+          if (authorShown && file.binary !== true) {
             body.push(h('div', { className: 'dsh-svnrev-legend', key: 'legend' },
               h('span', { className: 'dsh-svnrev-muted' }, t('legendNewer')),
               Array.from({ length: RECENCY_BUCKETS }, (unused, index) => h('span', {
@@ -1030,7 +1048,7 @@ body[data-ds-dark-theme] .dsh-svnrev-age-4 { color: #f0857a; }
           }
           // A lookup that does not describe the text on screen says so instead
           // of stamping the wrong author beside a line.
-          if (ready && file.binary !== true) {
+          if (authorShown && file.binary !== true) {
             if (blame.source === 'repository' && file.source === 'working') {
               body.push(h('div', { className: 'dsh-svnrev-muted', key: 'blamerepo' },
                 t('blameMismatch', { rev: blame.revision })))
@@ -1039,7 +1057,7 @@ body[data-ds-dark-theme] .dsh-svnrev-age-4 { color: #f0857a; }
                 t('blameRepository', { rev: blame.revision })))
             }
           }
-          if (ready && picked.activeLine !== null && file.binary !== true) {
+          if (authorShown && picked.activeLine !== null && file.binary !== true) {
             body.push(h('div', { className: 'dsh-svnrev-blamebar', key: 'blamebar' },
               h('strong', null, t('lineAuthor', { line: picked.activeLine })),
               activeEntry === undefined
@@ -1149,6 +1167,10 @@ body[data-ds-dark-theme] .dsh-svnrev-age-4 { color: #f0857a; }
                     // An unversioned file has no repository baseline, so its empty
                     // diff is a fact to explain rather than an empty pane.
                     hint: entry.item === 'unversioned' ? t('unversionedHint') : undefined,
+                    // The local-changes list is a list of what changed, so the
+                    // diff is what the reader came for; the whole file is one
+                    // click away on the tab beside it.
+                    tab: 'diff',
                   })
                 },
               },
@@ -1213,17 +1235,19 @@ body[data-ds-dark-theme] .dsh-svnrev-age-4 { color: #f0857a; }
           void loadBlame()
         },
       }, t('menuBlame')),
-      // Only offered while a lookup is on screen: an item that would do nothing
-      // is worse than an absent one.
-      picked !== null && picked.activeLine !== null && h('button', {
+      // Only offered while the author overlay is on screen: an item that would
+      // do nothing is worse than an absent one.
+      picked !== null && picked.blameVisible === true && h('button', {
         type: 'button',
         className: 'dsh-svnrev-menu-item',
         role: 'menuitem',
         onClick: () => {
           setMenu(null)
-          // Clearing `activeLine` hides the bar and un-highlights the row; the
-          // file and its blame stay loaded, so reopening a line is free.
-          setPicked(previous => (previous === null ? previous : { ...previous, activeLine: null }))
+          // This turns the WHOLE overlay off, not just the top bar: the gutter
+          // dates and authors, the legend, and the source notes all go with it,
+          // because they are the same "who changed this line" answer. The blame
+          // itself stays cached, so turning it back on costs no request.
+          setPicked(previous => (previous === null ? previous : { ...previous, activeLine: null, blameVisible: false }))
         },
       }, t('closeLineAuthor')))
 
