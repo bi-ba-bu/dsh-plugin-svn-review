@@ -65,6 +65,8 @@ window.__ModuleLoader__.load({
       blameMismatch: '文件有本地改动，行归属按 r{rev} 计算，可能与当前内容的行号不完全对应。',
       close: '关闭',
       closeLineAuthor: '关闭提交人信息',
+      legendNewer: '较新',
+      legendOlder: '较旧',
       menuBlame: '查看这行提交人',
       author: '提交人',
       revision: '版本',
@@ -141,6 +143,8 @@ window.__ModuleLoader__.load({
       blameMismatch: 'The file has local edits, so line authors are computed at r{rev} and may not line up with what is on screen.',
       close: 'Close',
       closeLineAuthor: 'Close the author details',
+      legendNewer: 'newer',
+      legendOlder: 'older',
       menuBlame: 'See who changed this line',
       author: 'Author',
       revision: 'Revision',
@@ -226,12 +230,34 @@ window.__ModuleLoader__.load({
 .dsh-svnrev-lineno { flex: 0 0 auto; position: sticky; left: 0; z-index: 1; min-width: 5ch; padding: 0 8px 0 6px; text-align: right; color: var(--dsw-alias-label-secondary); background: var(--dsw-alias-bg-layer-2); border-right: 1px solid var(--dsw-alias-border-l1); cursor: context-menu; user-select: none; font: inherit; }
 .dsh-svnrev-lineno:hover { color: var(--dsw-alias-brand-primary); }
 .dsh-svnrev-lineno-active { color: var(--dsw-alias-brand-primary); font-weight: 600; }
-/* Date above author. The date is tinted by recency, so it carries its own
-   colour and must not inherit the muted grey of the gutter. Both rows are set
-   tight: two rows must not make every code line twice as tall. */
+/* Date above author. The date carries a recency colour of its own, so it must
+   not inherit the muted grey of the gutter. Both rows are set tight: two rows
+   must not make every code line twice as tall. */
 .dsh-svnrev-gutter-blame { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-start; padding: 0 6px; color: var(--dsw-alias-label-secondary); border-right: 1px solid var(--dsw-alias-border-l1); white-space: pre; line-height: 1.15; }
-.dsh-svnrev-gutter-date { font-size: 9px; letter-spacing: -.2px; color: var(--dsw-alias-label-primary); }
+.dsh-svnrev-gutter-date { font-size: 9px; font-weight: 600; letter-spacing: -.2px; }
 .dsh-svnrev-gutter-who { font-size: 10px; color: var(--dsw-alias-label-secondary); }
+/* The revision over a line number is a real button, but it must not look like
+   a form control inside the gutter. */
+.dsh-svnrev-gutter-open { padding: 0; margin: 0; border: 0; border-radius: 2px; background: transparent; font: inherit; font-size: 10px; text-align: left; line-height: 1.15; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; text-decoration-style: dotted; }
+.dsh-svnrev-gutter-open:hover { background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-brand-primary); }
+.dsh-svnrev-gutter-open:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 1px; }
+.dsh-svnrev-legend { display: flex; align-items: center; gap: 3px; }
+/* A swatch is a filled chip: it takes its bucket as background, not text. */
+.dsh-svnrev-legend-dot { width: 8px; height: 8px; border-radius: 2px; display: inline-block; background: currentColor; }
+/* Recency ramp, newest first, as five hue stops. Light and dark need opposite
+   lightness, so each scheme gets its own set; one shared set would fail
+   contrast in the other. The stops are declared per scheme, then applied as
+   text colour on dates and as fill on legend swatches. */
+body:not([data-ds-dark-theme]) .dsh-svnrev-age-0 { color: #1d4ed8; }
+body:not([data-ds-dark-theme]) .dsh-svnrev-age-1 { color: #0e7490; }
+body:not([data-ds-dark-theme]) .dsh-svnrev-age-2 { color: #57534e; }
+body:not([data-ds-dark-theme]) .dsh-svnrev-age-3 { color: #a16207; }
+body:not([data-ds-dark-theme]) .dsh-svnrev-age-4 { color: #b91c1c; }
+body[data-ds-dark-theme] .dsh-svnrev-age-0 { color: #7ba7ff; }
+body[data-ds-dark-theme] .dsh-svnrev-age-1 { color: #4fc9d9; }
+body[data-ds-dark-theme] .dsh-svnrev-age-2 { color: #b0aca4; }
+body[data-ds-dark-theme] .dsh-svnrev-age-3 { color: #e0b055; }
+body[data-ds-dark-theme] .dsh-svnrev-age-4 { color: #f0857a; }
 .dsh-svnrev-codetext { display: block; padding: 0 10px; white-space: pre; }
 .dsh-svnrev-codehead { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
 
@@ -239,13 +265,10 @@ window.__ModuleLoader__.load({
 .dsh-svnrev-menu { position: fixed; z-index: 60; min-width: 170px; padding: 4px; border-radius: 8px; border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-1); box-shadow: 0 8px 24px rgba(0,0,0,.28); }
 .dsh-svnrev-menu-item { display: block; width: 100%; text-align: left; font: inherit; cursor: pointer; padding: 5px 8px; border-radius: 6px; border: 0; background: transparent; color: var(--dsw-alias-label-primary); }
 .dsh-svnrev-menu-item:hover, .dsh-svnrev-menu-item:focus-visible { background: var(--dsw-alias-bg-layer-2); outline: none; }
-.dsh-svnrev-blamebar { position: relative; display: flex; gap: 10px; flex-wrap: wrap; align-items: baseline; padding: 6px 26px 6px 8px; border-radius: 6px; border: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-layer-2); }
+.dsh-svnrev-blamebar { position: relative; display: flex; gap: 10px; flex-wrap: wrap; align-items: baseline; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-layer-2); }
 .dsh-svnrev-kv { display: inline-flex; gap: 4px; align-items: baseline; }
 /* Date above author, both left-aligned in one column. */
 .dsh-svnrev-kv-stack { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 1px; }
-.dsh-svnrev-blameclose { position: absolute; top: 4px; right: 4px; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--dsw-alias-label-secondary); font: inherit; line-height: 1; cursor: pointer; }
-.dsh-svnrev-blameclose:hover { background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); }
-.dsh-svnrev-blameclose:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 1px; }
 /* An inline link that reads as text but is a real, focusable button. */
 .dsh-svnrev-link { font: inherit; padding: 0 2px; border: 0; border-radius: 3px; background: transparent; color: var(--dsw-alias-brand-primary); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 .dsh-svnrev-link:hover { background: var(--dsw-alias-bg-layer-1); }
@@ -377,6 +400,20 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * Recency palette for the per-line commit date, newest first.
+     *
+     * A hue ramp, not a black-to-grey opacity ramp: with one hue the only
+     * difference between neighbours is brightness, which is exactly the axis a
+     * 9px glyph is worst at. Five hue stops stay apart at that size.
+     *
+     * The stops are class names, not colours: light and dark need opposite
+     * lightness, and DSH flips the scheme at runtime by setting
+     * `body[data-ds-dark-theme]`, so the CSS carries one palette per scheme.
+     */
+    const RECENCY_BUCKETS = 5
+    const recencyClass = (index) => `dsh-svnrev-age-${String(index)}`
+
+    /**
      * The whole file, one row per line, with a line-number gutter whose numbers
      * open a per-line author lookup on right click.
      *
@@ -386,11 +423,12 @@ window.__ModuleLoader__.load({
      * the wrong lines would be worse than printing nothing.
      *
      * Beside the line number the gutter carries the commit date above the
-     * author, and shades that date by recency across the whole file: the newest
-     * commit on screen is darkest, the oldest palest. One blame call already
-     * returns every line's date, so the scale costs no extra request.
+     * author, and tints that date by recency across the whole file: the newest
+     * commit on screen is the strongest colour, the oldest the faintest. One
+     * blame call already returns every line's date, so the scale costs no extra
+     * request.
      */
-    function FileView({ file, blame, activeLine, onPickLine, t }) {
+    function FileView({ file, blame, activeLine, onPickLine, onOpenRevision, t }) {
       if (file.binary === true) {
         return h('div', { className: 'dsh-svnrev-muted' }, t('binaryFile'))
       }
@@ -415,14 +453,17 @@ window.__ModuleLoader__.load({
       // among its own lines even though every one of them is old.
       const newest = times.length === 0 ? 0 : Math.max(...times)
       const oldest = times.length === 0 ? 0 : Math.min(...times)
-      const shade = (iso) => {
+      // Recency is a hue ramp, not a black-to-grey opacity ramp: with one hue
+      // the only difference between neighbours is brightness, which is exactly
+      // the axis a 9px glyph is worst at. The buckets are classes so the CSS can
+      // supply a light and a dark palette.
+      const bucket = (iso) => {
         const at = Date.parse(iso)
         // A single distinct date, or an unparseable one, has nothing to rank
-        // against: show it at full strength rather than guessing a shade.
-        if (Number.isNaN(at) || newest === oldest) return 1
-        // 0.45 is still legible against the gutter background; going paler
-        // would make the oldest lines look disabled.
-        return 0.45 + 0.55 * ((at - oldest) / (newest - oldest))
+        // against: show it as the newest rather than guessing a shade.
+        if (Number.isNaN(at) || newest === oldest) return 0
+        const ratio = (at - oldest) / (newest - oldest)
+        return Math.min(RECENCY_BUCKETS - 1, Math.floor((1 - ratio) * RECENCY_BUCKETS))
       }
       return h('div', { className: 'dsh-svnrev-code', tabIndex: 0, role: 'region', 'aria-label': t('fileTab') },
         lines.map((line, index) => {
@@ -439,12 +480,22 @@ window.__ModuleLoader__.load({
             },
             entry === undefined ? ' ' : [
               h('span', {
-                className: 'dsh-svnrev-gutter-date',
+                className: `dsh-svnrev-gutter-date ${recencyClass(bucket(entry.date))}`,
                 key: 'd',
-                style: { opacity: String(shade(entry.date)) },
               }, whenDate(entry.date) || ' '),
-              h('span', { className: 'dsh-svnrev-gutter-who', key: 'w' },
-                `r${String(entry.revision)} ${entry.author}`.trim()),
+              // The revision number over the line number is the second way into
+              // a commit: same destination as the author in the blame bar, but
+              // reachable without looking up the line first.
+              entry.revision === null
+                ? h('span', { className: 'dsh-svnrev-gutter-who', key: 'w' },
+                  `${String(entry.revision ?? '')} ${entry.author}`.trim())
+                : h('button', {
+                  type: 'button',
+                  className: 'dsh-svnrev-gutter-who dsh-svnrev-gutter-open',
+                  key: 'w',
+                  title: t('openRevisionHint', { rev: String(entry.revision) }),
+                  onClick: () => { onOpenRevision(entry.revision) },
+                }, `r${String(entry.revision)} ${entry.author}`.trim()),
             ]),
             h('span', {
               className: ['dsh-svnrev-lineno', activeLine === number ? 'dsh-svnrev-lineno-active' : undefined].filter(Boolean).join(' '),
@@ -959,6 +1010,17 @@ window.__ModuleLoader__.load({
           if (file.binary !== true) {
             body.push(h('div', { className: 'dsh-svnrev-muted', key: 'blamehint' }, t('lineAuthorHint')))
           }
+          // The palette is meaningless without its key: five coloured dates say
+          // nothing about which end is newer until this line spells it out.
+          if (ready && file.binary !== true) {
+            body.push(h('div', { className: 'dsh-svnrev-legend', key: 'legend' },
+              h('span', { className: 'dsh-svnrev-muted' }, t('legendNewer')),
+              Array.from({ length: RECENCY_BUCKETS }, (unused, index) => h('span', {
+                key: index,
+                className: `dsh-svnrev-legend-dot ${recencyClass(index)}`,
+              })),
+              h('span', { className: 'dsh-svnrev-muted' }, t('legendOlder'))))
+          }
           if (blame !== null && blame !== undefined && blame.phase === 'loading') {
             body.push(h('div', { className: 'dsh-svnrev-muted', key: 'blameload' }, t('blameLoading')))
           }
@@ -1011,25 +1073,16 @@ window.__ModuleLoader__.load({
                         title: t('openRevisionHint', { rev: String(activeEntry.revision) }),
                         onClick: () => { void openRevision(activeEntry.revision, picked.wc) },
                       }, `r${String(activeEntry.revision)}`)),
-                ],
-              // Dismissing the lookup is its own action: clearing `activeLine`
-              // hides the bar and un-highlights the row, while the file and its
-              // blame stay loaded so re-opening a line costs nothing.
-              h('button', {
-                type: 'button',
-                className: 'dsh-svnrev-blameclose',
-                title: t('closeLineAuthor'),
-                'aria-label': t('closeLineAuthor'),
-                onClick: () => {
-                  setPicked(previous => (previous === null ? previous : { ...previous, activeLine: null }))
-                },
-              }, '×')))
+                ]))
           }
           body.push(h('div', { key: 'code' }, h(FileView, {
             file,
             blame: blameForView,
             activeLine: picked.activeLine,
             onPickLine: (line, x, y) => { setMenu({ line, x, y }) },
+            // The revision shown over a line number opens that commit, exactly
+            // like the author in the blame bar.
+            onOpenRevision: (rev) => { void openRevision(rev, picked.wc) },
             t,
           })))
         }
@@ -1137,7 +1190,10 @@ window.__ModuleLoader__.load({
         }
       }
 
-      // The per-line author menu, placed at the pointer that opened it.
+      // The per-line menu, placed at the pointer that opened it. Right-clicking
+      // a line number is both how the author lookup is opened and how it is
+      // dismissed, so the same menu carries the close item whenever a lookup is
+      // showing — the reader never has to hunt for a corner control.
       const menuNode = menu === null ? null : h('div', {
         className: 'dsh-svnrev-menu',
         style: { left: `${String(menu.x)}px`, top: `${String(menu.y)}px` },
@@ -1156,7 +1212,20 @@ window.__ModuleLoader__.load({
           setPicked(previous => (previous === null ? previous : { ...previous, activeLine: line }))
           void loadBlame()
         },
-      }, t('menuBlame')))
+      }, t('menuBlame')),
+      // Only offered while a lookup is on screen: an item that would do nothing
+      // is worse than an absent one.
+      picked !== null && picked.activeLine !== null && h('button', {
+        type: 'button',
+        className: 'dsh-svnrev-menu-item',
+        role: 'menuitem',
+        onClick: () => {
+          setMenu(null)
+          // Clearing `activeLine` hides the bar and un-highlights the row; the
+          // file and its blame stay loaded, so reopening a line is free.
+          setPicked(previous => (previous === null ? previous : { ...previous, activeLine: null }))
+        },
+      }, t('closeLineAuthor')))
 
       return h('div', { className: 'dsh-svnrev-root' },
         h('style', { key: 'css', dangerouslySetInnerHTML: { __html: css } }),
